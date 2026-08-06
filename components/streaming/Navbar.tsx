@@ -63,17 +63,17 @@ export function Navbar({
               </Link>
               <Link
                 href="/streaming/mis-compras"
-                title="Mis compras"
-                className="hidden rounded-xl border border-border bg-surface p-2.5 text-foreground hover:border-border-strong sm:flex"
+                className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
               >
                 <ShoppingBag size={16} />
+                <span className="hidden lg:inline">Mis compras</span>
               </Link>
               <Link
                 href="/streaming/biblioteca"
-                title="Biblioteca"
-                className="hidden rounded-xl border border-border bg-surface p-2.5 text-foreground hover:border-border-strong sm:flex"
+                className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
               >
                 <Library size={16} />
+                <span className="hidden lg:inline">Biblioteca</span>
               </Link>
 
               <NotificationsDropdown notifications={notifications ?? []} unreadCount={unreadCount ?? 0} />

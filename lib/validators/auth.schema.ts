@@ -25,3 +25,9 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Ingresa tu contraseña"),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Ingresa tu contraseña actual"),
+  newPassword: z.string().min(8, "La nueva contraseña debe tener al menos 8 caracteres"),
+});
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

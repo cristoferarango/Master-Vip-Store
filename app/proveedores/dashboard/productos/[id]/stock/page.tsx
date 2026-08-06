@@ -2,10 +2,8 @@ import { notFound } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getMyProviderProfile, getProductStock } from "@/lib/actions/provider.actions";
 import { Card } from "@/components/ui/Card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 import { StockCredentialForm } from "@/components/proveedores/StockCredentialForm";
-import { RevealStockCredentials } from "@/components/proveedores/RevealStockCredentials";
-import { formatDatePE } from "@/lib/utils/dates";
+import { StockRow } from "@/components/proveedores/StockRow";
 
 export default async function ProductStockPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -40,13 +38,7 @@ export default async function ProductStockPage({ params }: { params: Promise<{ i
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {stock.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="flex items-center gap-2 text-sm">
-                  <StatusBadge status={s.status} />
-                  <span className="text-xs text-muted-foreground">Agregada {formatDatePE(s.createdAt)}</span>
-                </div>
-                {s.status === "DISPONIBLE" && <RevealStockCredentials stockId={s.id} />}
-              </div>
+              <StockRow key={s.id} stock={s} />
             ))}
           </div>
         )}

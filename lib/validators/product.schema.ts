@@ -18,3 +18,11 @@ export const accountStockSchema = z.object({
   extraInfo: z.string().trim().max(2000).optional(),
 });
 export type AccountStockInput = z.infer<typeof accountStockSchema>;
+
+export const updateStockSchema = z.object({
+  stockId: z.string().min(1),
+  username: z.string().trim().min(1, "Ingresa el usuario/correo de la cuenta"),
+  password: z.string().trim().min(1, "Ingresa la contraseña de la cuenta"),
+  extraInfo: z.string().trim().max(2000).optional(),
+});
+export type UpdateStockInput = z.infer<typeof updateStockSchema>;

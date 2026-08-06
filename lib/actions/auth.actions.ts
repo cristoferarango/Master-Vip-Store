@@ -185,3 +185,22 @@ export async function login(input: LoginInput) {
 export async function logout() {
   await destroySession();
 }
+
+/** Cambia la contraseña de la cuenta en sesión, verificando la contraseña actual. */
+export async function changePassword(userId: string, currentPassword: string, newPassword: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+  const valid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!valid) throw new AuthError("Tu contraseña actual no es correcta.");
+
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+}
+
+/** Datos de cuenta para las páginas de perfil (name/email/whatsapp/fecha) — no incluye la contraseña, que nunca se lee en claro. */
+export async function getMyAccount(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, whatsapp: true, createdAt: true, isAdmin: true },
+  });
+}

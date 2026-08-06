@@ -33,3 +33,13 @@ export async function getProductBySlug(slug: string) {
 export async function getCategories() {
   return prisma.category.findMany({ orderBy: { order: "asc" } });
 }
+
+/** Categorías con la cantidad de productos activos — para la vitrina de plataformas (Biblioteca). */
+export async function getCategoriesWithProductCount() {
+  return prisma.category.findMany({
+    orderBy: { order: "asc" },
+    include: {
+      _count: { select: { products: { where: { isActive: true, provider: { status: "ACTIVO" } } } } },
+    },
+  });
+}

@@ -181,6 +181,7 @@ model Purchase {
   // Snapshot cifrado propio, inmutable aunque el proveedor edite el AccountStock original
   credentialUsernameEncrypted String
   credentialPasswordEncrypted String
+  credentialExtraEncrypted    String?
 
   review    Review?
   createdAt DateTime @default(now())

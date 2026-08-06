@@ -3,7 +3,9 @@
 import { prisma } from "@/lib/db/prisma";
 import { getSession, type SessionPayload } from "@/lib/auth/session";
 import { decryptSecret } from "@/lib/crypto/credentials";
+import { hashPassword } from "@/lib/auth/password";
 import { sendNotification } from "@/lib/notifications/notify";
+import { updateAccountSchema } from "@/lib/validators/admin.schema";
 import type { ActionResult } from "./types";
 import type { ProviderStatus } from "@prisma/client";
 
@@ -43,6 +45,95 @@ export async function toggleProviderStatus(
   }
 
   return { ok: true, data: { id: provider.id } };
+}
+
+/** Edita correo/whatsapp de cualquier cuenta y, opcionalmente, resetea su contraseña. */
+export async function updateUserAccount(
+  userId: string,
+  input: unknown
+): Promise<ActionResult<{ id: string }>> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, error: "No autorizado." };
+
+  const parsed = updateAccountSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  if (existing && existing.id !== userId) {
+    return { ok: false, error: "Ese correo ya lo usa otra cuenta." };
+  }
+
+  const data: { email: string; whatsapp: string; passwordHash?: string } = {
+    email: parsed.data.email,
+    whatsapp: parsed.data.whatsapp,
+  };
+  if (parsed.data.newPassword) {
+    data.passwordHash = await hashPassword(parsed.data.newPassword);
+  }
+
+  await prisma.user.update({ where: { id: userId }, data });
+  return { ok: true, data: { id: userId } };
+}
+
+/** Otorga o retira la capacidad de proveedor de una cuenta existente. */
+export async function setUserProviderRole(
+  userId: string,
+  makeProvider: boolean,
+  businessName?: string
+): Promise<ActionResult<{ id: string }>> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, error: "No autorizado." };
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { providerProfile: true } });
+  if (!user) return { ok: false, error: "Cuenta no encontrada." };
+
+  if (makeProvider) {
+    if (user.providerProfile) return { ok: true, data: { id: userId } };
+    await prisma.provider.create({
+      data: {
+        userId,
+        businessName: businessName?.trim() || `${user.name} Store`,
+        status: "ACTIVO",
+        activatedAt: new Date(),
+      },
+    });
+    await sendNotification({
+      userId,
+      type: "PROVEEDOR_ACTIVADO",
+      title: "¡Ahora también eres proveedor!",
+      message: "El dueño activó tu cuenta de proveedor. Ya puedes publicar productos.",
+    });
+  } else {
+    if (!user.providerProfile) return { ok: true, data: { id: userId } };
+    try {
+      await prisma.provider.delete({ where: { userId } });
+    } catch {
+      return {
+        ok: false,
+        error: "No se puede quitar el rol: tiene productos con ventas registradas.",
+      };
+    }
+  }
+
+  return { ok: true, data: { id: userId } };
+}
+
+/** Elimina una cuenta por completo. Falla con un mensaje claro si tiene compras/ventas registradas (se conservan por integridad del historial). */
+export async function deleteUserAccount(userId: string): Promise<ActionResult<{ id: string }>> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, error: "No autorizado." };
+  if (userId === admin.userId) return { ok: false, error: "No puedes eliminar tu propia cuenta." };
+
+  try {
+    await prisma.user.delete({ where: { id: userId } });
+  } catch {
+    return {
+      ok: false,
+      error: "No se puede eliminar: la cuenta tiene compras o ventas registradas en el historial.",
+    };
+  }
+
+  return { ok: true, data: { id: userId } };
 }
 
 export async function approveDeposit(depositId: string): Promise<ActionResult<{ id: string }>> {
@@ -188,9 +279,57 @@ export async function getAllUsers() {
   // Todas las cuentas no-admin (una cuenta puede ser cliente y proveedor a la vez).
   return prisma.user.findMany({
     where: { isAdmin: false },
-    include: { wallet: true, _count: { select: { purchases: true } } },
+    include: {
+      wallet: true,
+      _count: { select: { purchases: true } },
+      providerProfile: { select: { id: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
+}
+
+/**
+ * Detalle de un cliente para el panel "Detalles" del admin: sus compras con
+ * credenciales visibles. Se llama desde un componente cliente (RPC de
+ * Server Action), así que el resultado debe ser serializable — sin
+ * Decimal/passwordHash crudos.
+ */
+export async function getUserDetail(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      wallet: true,
+      purchases: {
+        include: {
+          product: { select: { name: true } },
+          provider: { select: { businessName: true } },
+        },
+        orderBy: { purchaseDate: "desc" },
+      },
+    },
+  });
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    whatsapp: user.whatsapp,
+    createdAt: user.createdAt,
+    balance: user.wallet ? user.wallet.balance.toString() : "0",
+    purchases: user.purchases.map((p) => ({
+      id: p.id,
+      productName: p.product.name,
+      providerName: p.provider.businessName,
+      purchaseDate: p.purchaseDate,
+      expirationDate: p.expirationDate,
+      status: p.status,
+      pricePaid: p.pricePaid.toString(),
+      credentialUsername: decryptSecret(p.credentialUsernameEncrypted),
+      credentialPassword: decryptSecret(p.credentialPasswordEncrypted),
+      credentialExtra: p.credentialExtraEncrypted ? decryptSecret(p.credentialExtraEncrypted) : null,
+    })),
+  };
 }
 
 export async function getAllProviders() {
@@ -214,7 +353,7 @@ export async function getProviderDetail(providerId: string) {
       },
       purchases: {
         include: {
-          cliente: { select: { name: true, whatsapp: true } },
+          cliente: { select: { id: true, name: true, whatsapp: true, email: true } },
           product: { select: { name: true } },
         },
         orderBy: { purchaseDate: "desc" },

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
 import { encryptSecret, decryptSecret } from "@/lib/crypto/credentials";
 import { slugifyUnique } from "@/lib/utils/slug";
-import { productSchema, accountStockSchema } from "@/lib/validators/product.schema";
+import { productSchema, accountStockSchema, updateStockSchema } from "@/lib/validators/product.schema";
 import { updateProviderProfileSchema } from "@/lib/validators/provider.schema";
 import type { ActionResult } from "./types";
 
@@ -53,6 +53,40 @@ export async function updateProduct(
   return { ok: true, data: { id: productId } };
 }
 
+export async function toggleProductActive(
+  productId: string,
+  isActive: boolean
+): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const existing = await prisma.product.findFirst({ where: { id: productId, providerId: provider.id } });
+  if (!existing) return { ok: false, error: "Producto no encontrado." };
+
+  await prisma.product.update({ where: { id: productId }, data: { isActive } });
+  return { ok: true, data: { id: productId } };
+}
+
+export async function deleteProduct(productId: string): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const existing = await prisma.product.findFirst({ where: { id: productId, providerId: provider.id } });
+  if (!existing) return { ok: false, error: "Producto no encontrado." };
+
+  const soldCount = await prisma.accountStock.count({ where: { productId, status: "VENDIDA" } });
+  if (soldCount > 0) {
+    return {
+      ok: false,
+      error: "No se puede eliminar: tiene cuentas ya vendidas con historial de compra. Desactívalo en su lugar.",
+    };
+  }
+
+  await prisma.accountStock.deleteMany({ where: { productId } });
+  await prisma.product.delete({ where: { id: productId } });
+  return { ok: true, data: { id: productId } };
+}
+
 export async function addStock(input: unknown): Promise<ActionResult<{ id: string }>> {
   const provider = await getSessionProvider();
   if (!provider) return { ok: false, error: "No autorizado." };
@@ -75,6 +109,52 @@ export async function addStock(input: unknown): Promise<ActionResult<{ id: strin
   });
 
   return { ok: true, data: { id: stock.id } };
+}
+
+export async function updateStock(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const parsed = updateStockSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const stock = await prisma.accountStock.findUnique({
+    where: { id: parsed.data.stockId },
+    include: { product: { select: { providerId: true } } },
+  });
+  if (!stock || stock.product.providerId !== provider.id) {
+    return { ok: false, error: "No encontrado." };
+  }
+
+  await prisma.accountStock.update({
+    where: { id: parsed.data.stockId },
+    data: {
+      usernameEncrypted: encryptSecret(parsed.data.username),
+      passwordEncrypted: encryptSecret(parsed.data.password),
+      extraInfoEncrypted: parsed.data.extraInfo ? encryptSecret(parsed.data.extraInfo) : null,
+    },
+  });
+
+  return { ok: true, data: { id: parsed.data.stockId } };
+}
+
+export async function deleteStock(stockId: string): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const stock = await prisma.accountStock.findUnique({
+    where: { id: stockId },
+    include: { product: { select: { providerId: true } } },
+  });
+  if (!stock || stock.product.providerId !== provider.id) {
+    return { ok: false, error: "No encontrado." };
+  }
+  if (stock.status === "VENDIDA") {
+    return { ok: false, error: "No se puede eliminar: esta cuenta ya fue vendida." };
+  }
+
+  await prisma.accountStock.delete({ where: { id: stockId } });
+  return { ok: true, data: { id: stockId } };
 }
 
 export async function updateProviderProfile(
@@ -141,15 +221,27 @@ export async function getProductForEdit(productId: string, providerId: string) {
 export async function getProductStock(productId: string, providerId: string) {
   const product = await prisma.product.findFirst({ where: { id: productId, providerId } });
   if (!product) return null;
-  const stock = await prisma.accountStock.findMany({
+  const rows = await prisma.accountStock.findMany({
     where: { productId },
     orderBy: { createdAt: "desc" },
   });
+
+  // El proveedor es dueño de estas credenciales — se muestran directo, sin
+  // botón de "revelar" (a diferencia de lo que ve un comprador o el admin).
+  const stock = rows.map((s) => ({
+    id: s.id,
+    status: s.status,
+    createdAt: s.createdAt,
+    username: decryptSecret(s.usernameEncrypted),
+    password: decryptSecret(s.passwordEncrypted),
+    extraInfo: s.extraInfoEncrypted ? decryptSecret(s.extraInfoEncrypted) : null,
+  }));
+
   return { product, stock };
 }
 
 export async function getMySales(providerId: string) {
-  return prisma.purchase.findMany({
+  const purchases = await prisma.purchase.findMany({
     where: { providerId },
     include: {
       cliente: { select: { name: true, whatsapp: true } },
@@ -157,6 +249,15 @@ export async function getMySales(providerId: string) {
     },
     orderBy: { purchaseDate: "desc" },
   });
+
+  // Igual que el stock: es su propia venta, se muestran las credenciales
+  // entregadas directamente sin paso de "revelar".
+  return purchases.map((p) => ({
+    ...p,
+    credentialUsername: decryptSecret(p.credentialUsernameEncrypted),
+    credentialPassword: decryptSecret(p.credentialPasswordEncrypted),
+    credentialExtra: p.credentialExtraEncrypted ? decryptSecret(p.credentialExtraEncrypted) : null,
+  }));
 }
 
 export async function getDashboardStats(providerId: string) {

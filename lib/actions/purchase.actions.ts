@@ -80,6 +80,7 @@ export async function purchaseProduct(
           expirationDate: addDays(new Date(), product.durationDays),
           credentialUsernameEncrypted: stock.usernameEncrypted,
           credentialPasswordEncrypted: stock.passwordEncrypted,
+          credentialExtraEncrypted: stock.extraInfoEncrypted,
         },
       });
 

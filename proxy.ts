@@ -30,8 +30,8 @@ async function getClaimsFromCookie(request: NextRequest): Promise<Claims | null>
 const PROTECTED_RULES: { prefix: string; check: (c: Claims | null) => boolean; loginPath: string }[] = [
   { prefix: "/streaming/wallet", check: (c) => !!c, loginPath: "/streaming/login" },
   { prefix: "/streaming/mis-compras", check: (c) => !!c, loginPath: "/streaming/login" },
-  { prefix: "/streaming/biblioteca", check: (c) => !!c, loginPath: "/streaming/login" },
   { prefix: "/streaming/perfil", check: (c) => !!c, loginPath: "/streaming/login" },
+  // /streaming/biblioteca ya no requiere sesión: es una vitrina pública de plataformas.
   { prefix: "/proveedores/dashboard", check: (c) => !!c?.providerId, loginPath: "/proveedores" },
   { prefix: "/vip/dashboard", check: (c) => !!c?.isAdmin, loginPath: "/vip" },
 ];

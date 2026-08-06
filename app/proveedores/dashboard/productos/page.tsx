@@ -5,6 +5,7 @@ import { getMyProviderProfile, getMyProducts } from "@/lib/actions/provider.acti
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { ProductRowActions } from "@/components/proveedores/ProductRowActions";
 import { formatSoles } from "@/lib/utils/currency";
 
 export default async function ProviderProductsPage() {
@@ -44,17 +45,20 @@ export default async function ProviderProductsPage() {
                   {p.category.name} · {formatSoles(p.price.toString())} · {p._count.stockItems} disponibles
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Link href={`/proveedores/dashboard/productos/${p.id}/stock`}>
-                  <Button size="sm" variant="secondary">
-                    Stock
-                  </Button>
-                </Link>
-                <Link href={`/proveedores/dashboard/productos/${p.id}/editar`}>
-                  <Button size="sm" variant="outline">
-                    Editar
-                  </Button>
-                </Link>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Link href={`/proveedores/dashboard/productos/${p.id}/stock`}>
+                    <Button size="sm" variant="secondary">
+                      Stock
+                    </Button>
+                  </Link>
+                  <Link href={`/proveedores/dashboard/productos/${p.id}/editar`}>
+                    <Button size="sm" variant="outline">
+                      Editar
+                    </Button>
+                  </Link>
+                </div>
+                <ProductRowActions productId={p.id} isActive={p.isActive} />
               </div>
             </Card>
           ))}
