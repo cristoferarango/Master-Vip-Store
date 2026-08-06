@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/*
+ * Master Vip Store — identidad rojo / negro / blanco. Tema fijo oscuro (no
+ * es un modo alternable), estética "club exclusivo" inspirada en
+ * samsy.ninja: negro profundo, tipografía blanca de alto contraste y un
+ * único acento cromático (rojo) que marca jerarquía y estado.
+ */
+:root {
+  color-scheme: dark;
+
+  --background: #030303;
+  --background-elevated: #0b0a0a;
+  --foreground: #f5f5f5;
+  --muted-foreground: #8f8b8b;
+
+  --surface: rgba(255, 255, 255, 0.035);
+  --surface-strong: rgba(255, 255, 255, 0.065);
+  --border: rgba(220, 38, 38, 0.22);
+  --border-strong: rgba(220, 38, 38, 0.5);
+
+  --primary: #dc2626;
+  --primary-strong: #ef4444;
+  --primary-foreground: #ffffff;
+  --accent: #f87171;
+  --accent-2: #7f1d1d;
+
+  /* Estados: se resuelven en blanco/rojo — sin verdes ni ámbar, para respetar la paleta. */
+  --success: #f5f5f5;
+  --warning: #f87171;
+  --danger: #ef4444;
+
+  --radius: 1rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-elevated: var(--background-elevated);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-card: var(--radius);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Tarjeta "glass": fondo translúcido + blur + borde rojo tenue. */
+.glass-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #ffffff, var(--accent) 55%, var(--primary-strong));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Fondo de blobs rojos animados, usado en los layouts de cada panel. */
+@keyframes blob-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(6%, -7%) scale(1.12); }
+  66% { transform: translate(-5%, 5%) scale(0.92); }
+}
+
+.blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.35;
+  animation: blob-float 14s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Marquee infinito para la barra de logos de marcas. */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee-scroll 28s linear infinite;
+}
+
+/* Partículas flotantes decorativas — puntos de luz rojos que suben lentamente por el fondo. */
+@keyframes particle-drift {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: var(--particle-opacity, 0.7); }
+  90% { opacity: var(--particle-opacity, 0.7); }
+  100% { transform: translate(var(--particle-drift-x, 12px), -110vh); opacity: 0; }
+}
+
+.particle {
+  position: absolute;
+  bottom: -5%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(220, 38, 38, 0.25) 65%, transparent 100%);
+  animation: particle-drift linear infinite;
+  pointer-events: none;
+}
+
+/* Brillo diagonal que recorre botones/tarjetas destacadas cada cierto tiempo. */
+@keyframes shimmer-sweep {
+  0%, 55% { transform: translateX(-130%) skewX(-14deg); }
+  100% { transform: translateX(230%) skewX(-14deg); }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transform: translateX(-130%) skewX(-14deg);
+  animation: shimmer-sweep 3.6s ease-in-out infinite;
+  animation-delay: var(--shimmer-delay, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blob,
+  .animate-marquee,
+  .particle,
+  .shimmer::after {
+    animation: none;
+  }
+}
+
+/* Cursor personalizado: oculta el nativo salvo en campos de texto (donde se necesita ver el cursor de escritura). */
+.mvs-cursor-none,
+.mvs-cursor-none * {
+  cursor: none !important;
+}
+
+.mvs-cursor-none input,
+.mvs-cursor-none textarea,
+.mvs-cursor-none select,
+.mvs-cursor-none [contenteditable="true"] {
+  cursor: text !important;
+}
+
+/* Meteorito: cola en punta (atrás) + cabeza redonda brillante (adelante, en la dirección de movimiento). */
+.mvs-cursor-core {
+  width: 16px;
+  height: 4px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(to right, transparent 0%, var(--primary) 30%, var(--accent) 65%, #ffffff 100%);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8), 0 0 18px rgba(239, 68, 68, 0.35);
+  transition: height 0.18s ease, box-shadow 0.18s ease, opacity 0.15s ease;
+}
+
+/* Sobre elementos interactivos no cambia de forma, solo brilla más grueso e intenso. */
+.mvs-cursor-core[data-hover="true"] {
+  height: 7px;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.95), 0 0 30px rgba(239, 68, 68, 0.55);
+}
+
+.mvs-cursor-core[data-press="true"] {
+  width: 8px !important;
+  height: 8px !important;
+}
