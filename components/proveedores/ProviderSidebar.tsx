@@ -40,7 +40,7 @@ export function ProviderSidebar({ businessName }: { businessName: string }) {
                 : "text-muted-foreground hover:bg-surface hover:text-foreground"
             )}
           >
-            <Icon size={16} />
+            <Icon size={16} className="animate-wiggle" />
             {label}
           </Link>
         );

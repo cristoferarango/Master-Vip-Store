@@ -32,6 +32,11 @@
   --danger: #ef4444;
 
   --radius: 1rem;
+
+  /* Curvas de motion reutilizables — ver .claude/skills/ui-animation */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-move: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
@@ -155,12 +160,166 @@ body {
   animation-delay: var(--shimmer-delay, 0s);
 }
 
+/* ---------------------------------------------------------------------
+ * Sistema de motion — entradas en cascada ("la página se va construyendo")
+ * + acentos en movimiento constante para que nada quede del todo estático.
+ * Solo transform/opacity/box-shadow, curvas nombradas de arriba.
+ * --------------------------------------------------------------------- */
+
+@keyframes build-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-build {
+  animation: build-in 0.6s var(--ease-enter) both;
+}
+
+/* Entra una vez y después flota para siempre — pasar 2 valores de
+   animation-delay separados por coma: "<entrada>s, <entrada+0.5>s". */
+.animate-build-float {
+  animation: build-in 0.5s var(--ease-enter) both, float-y 3s ease-in-out 0.5s infinite;
+}
+
+/* Cascada: aplicar junto a .animate-build, un valor de retraso por ítem
+   (30-50ms entre ítems, tope ~300ms recomendado por la skill — acá se
+   extiende un poco más porque es la entrada completa de la página). */
+.build-delay-1 { animation-delay: 0.06s; }
+.build-delay-2 { animation-delay: 0.12s; }
+.build-delay-3 { animation-delay: 0.18s; }
+.build-delay-4 { animation-delay: 0.24s; }
+.build-delay-5 { animation-delay: 0.3s; }
+.build-delay-6 { animation-delay: 0.36s; }
+
+/* Flotación continua y notoria — solo vertical, nunca de lado a lado. */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float {
+  animation: float-y 2.6s ease-in-out infinite;
+}
+
+/* Bamboleo continuo para íconos. */
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-6deg) scale(1); }
+  50% { transform: rotate(6deg) scale(1.08); }
+}
+.animate-wiggle {
+  animation: wiggle 1.8s ease-in-out infinite;
+}
+
+/* Respiración continua de escala — tarjetas y paneles nunca del todo quietos. */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+}
+.animate-breathe {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+/* Línea neón que recorre el borde de una tarjeta sin parar. */
+@property --trace-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes trace-rotate {
+  to { --trace-angle: 360deg; }
+}
+.neon-trace {
+  position: relative;
+  isolation: isolate;
+}
+.neon-trace::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--trace-angle), transparent 78%, #ffffff 88%, var(--primary-strong) 94%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: trace-rotate 2.6s linear infinite;
+  pointer-events: none;
+}
+
+/* Palabra por palabra, de abajo hacia arriba — para títulos que "se construyen". */
+@keyframes word-rise {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.word-rise {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.word-rise > span {
+  display: inline-block;
+  animation: word-rise 0.6s var(--ease-enter) both;
+}
+
+/* Glow continuo para texto/títulos destacados. */
+@keyframes text-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); }
+  50% { filter: drop-shadow(0 0 14px rgba(239, 68, 68, 0.55)); }
+}
+.animate-text-glow {
+  animation: text-glow 2.2s ease-in-out infinite;
+}
+
+/* Entrada de modales: backdrop rápido + panel que emerge desde el centro (nunca scale(0)). */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-backdrop-in { animation: modal-backdrop-in 0.18s ease-out both; }
+.modal-panel-in { animation: modal-panel-in 0.28s var(--ease-enter) both; }
+
+/* Popovers/dropdowns: emergen desde su disparador (esquina superior derecha por defecto), nunca desde el centro de la pantalla. */
+@keyframes popover-in {
+  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.popover-in {
+  animation: popover-in 0.18s var(--ease-enter) both;
+  transform-origin: top right;
+}
+
+/* Feedback de presión para botones/tarjetas clicables. */
+.press-feedback {
+  transition: transform 0.14s var(--ease-enter);
+}
+.press-feedback:active {
+  transform: scale(0.96);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .blob,
   .animate-marquee,
   .particle,
-  .shimmer::after {
+  .shimmer::after,
+  .animate-build,
+  .animate-build-float,
+  .animate-float,
+  .animate-wiggle,
+  .animate-breathe,
+  .animate-text-glow,
+  .neon-trace::before,
+  .word-rise > span,
+  .modal-backdrop-in,
+  .modal-panel-in,
+  .popover-in {
     animation: none;
+  }
+  .press-feedback:active {
+    transform: none;
   }
 }
 
@@ -177,23 +336,12 @@ body {
   cursor: text !important;
 }
 
-/* Meteorito: cola en punta (atrás) + cabeza redonda brillante (adelante, en la dirección de movimiento). */
-.mvs-cursor-core {
-  width: 16px;
-  height: 4px;
-  border-radius: 0 999px 999px 0;
-  background: linear-gradient(to right, transparent 0%, var(--primary) 30%, var(--accent) 65%, #ffffff 100%);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8), 0 0 18px rgba(239, 68, 68, 0.35);
-  transition: height 0.18s ease, box-shadow 0.18s ease, opacity 0.15s ease;
+/* Estela de chispas del cursor — misma estética que las partículas del
+   fondo EnergyField. Posición/tamaño/color se calculan en JS por cuadro;
+   aquí solo transiciona opacity (nunca transform/width/height, que ya se
+   actualizan a 60fps desde el rAF). */
+.mvs-cursor-dot {
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  transition: opacity 0.15s ease;
 }
 
-/* Sobre elementos interactivos no cambia de forma, solo brilla más grueso e intenso. */
-.mvs-cursor-core[data-hover="true"] {
-  height: 7px;
-  box-shadow: 0 0 14px rgba(239, 68, 68, 0.95), 0 0 30px rgba(239, 68, 68, 0.55);
-}
-
-.mvs-cursor-core[data-press="true"] {
-  width: 8px !important;
-  height: 8px !important;
-}

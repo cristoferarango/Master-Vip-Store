@@ -35,13 +35,13 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       aria-modal="true"
     >
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="modal-backdrop-in absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         className={cn(
-          "glass-card relative z-10 w-full max-w-lg rounded-2xl bg-background-elevated p-6 shadow-2xl",
+          "modal-panel-in glass-card relative z-10 w-full max-w-lg rounded-2xl bg-background-elevated p-6 shadow-2xl",
           className
         )}
       >
@@ -50,7 +50,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           <button
             onClick={onClose}
             aria-label="Cerrar"
-            className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:bg-surface hover:text-foreground"
+            className="press-feedback ml-auto rounded-lg p-1.5 text-muted-foreground transition-colors duration-150 hover:bg-surface hover:text-foreground"
           >
             <X size={18} />
           </button>

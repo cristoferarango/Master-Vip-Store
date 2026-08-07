@@ -11,9 +11,14 @@ export function ProductGrid({ products, isLoggedIn }: { products: ProductCardDat
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {products.map((product) => (
-        <ProductCard key={product.slug} product={product} isLoggedIn={isLoggedIn} />
-      ))}
+      {products.map((product, i) => {
+        const d = Math.min(i * 0.045, 0.4);
+        return (
+          <div key={product.slug} className="animate-build-float" style={{ animationDelay: `${d}s, ${d + 0.5}s` }}>
+            <ProductCard product={product} isLoggedIn={isLoggedIn} />
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -9,9 +9,19 @@ export default function RootPage() {
 
       <div className="mb-14 text-center">
         <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-          MASTER <span className="text-gradient">VIP STORE</span>
+          <span className="word-rise mr-3">
+            <span style={{ animationDelay: "0s" }}>MASTER</span>
+          </span>
+          <span className="word-rise text-gradient animate-text-glow mr-3">
+            <span style={{ animationDelay: "0.1s" }}>VIP</span>
+          </span>
+          <span className="word-rise text-gradient animate-text-glow">
+            <span style={{ animationDelay: "0.2s" }}>STORE</span>
+          </span>
         </h1>
-        <p className="mt-4 text-base text-muted-foreground sm:text-lg">¿Qué quieres hacer hoy?</p>
+        <p className="animate-build build-delay-1 mt-4 text-base text-muted-foreground sm:text-lg">
+          ¿Qué quieres hacer hoy?
+        </p>
       </div>
 
       <div className="grid w-full max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">

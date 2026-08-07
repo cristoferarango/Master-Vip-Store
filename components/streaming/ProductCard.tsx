@@ -19,8 +19,8 @@ export function ProductCard({ product, isLoggedIn }: { product: ProductCardData;
   const outOfStock = product.stockAvailable <= 0;
 
   return (
-    <div className="glass-card group flex flex-col overflow-hidden rounded-2xl transition-transform hover:-translate-y-1 hover:border-border-strong">
-      <Link href={`/streaming/productos/${product.slug}`} className="relative block aspect-[4/3] w-full overflow-hidden bg-surface-strong">
+    <div className="neon-trace glass-card group flex flex-col overflow-hidden rounded-2xl transition-[transform,border-color,box-shadow] duration-300 ease-[var(--ease-move)] hover:-translate-y-1.5 hover:border-border-strong hover:shadow-xl hover:shadow-primary/10">
+      <Link href={`/streaming/productos/${product.slug}`} className="relative block aspect-[3/4] w-full overflow-hidden bg-surface-strong">
         <Image
           src={product.imageUrl}
           alt={product.name}
@@ -45,7 +45,7 @@ export function ProductCard({ product, isLoggedIn }: { product: ProductCardData;
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="line-clamp-1">{product.provider.businessName}</span>
           <span className="flex shrink-0 items-center gap-1 text-warning">
-            <Star size={12} fill="currentColor" />
+            <Star size={12} fill="currentColor" className="animate-wiggle" />
             {rating > 0 ? rating.toFixed(1) : "Nuevo"}
           </span>
         </div>

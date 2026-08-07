@@ -19,7 +19,7 @@ export default async function ProviderDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="animate-build flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Resumen</h1>
           <p className="text-sm text-muted-foreground">Hola, {provider.businessName} 👋</p>
@@ -29,7 +29,7 @@ export default async function ProviderDashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="animate-build build-delay-1 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Ganancias totales" value={formatSoles(stats.totalEarnings)} />
         <StatCard label="Ganancias este mes" value={formatSoles(stats.earningsThisMonth)} />
         <StatCard label="Ventas totales" value={String(stats.totalSales)} />

@@ -10,7 +10,7 @@ export default async function VipDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="animate-build flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-foreground">Resumen general</h1>
           <p className="text-sm text-muted-foreground">Estado global de Master Vip Store.</p>
@@ -18,7 +18,7 @@ export default async function VipDashboardPage() {
         <ExpirationCheckButton />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="animate-build build-delay-1 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Ingresos totales" value={formatSoles(stats.totalRevenue)} />
         <StatCard label="Ingresos este mes" value={formatSoles(stats.revenueThisMonth)} />
         <StatCard label="Clientes registrados" value={String(stats.totalUsers)} sub={`+${stats.newUsersThisWeek} esta semana`} />

@@ -34,7 +34,7 @@ export default async function MisComprasPage() {
         <div className="flex flex-col gap-3">
           {purchases.map((p) => (
             <Card key={p.id} className="flex flex-col gap-3 sm:flex-row sm:items-start">
-              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-lg border border-border sm:w-28">
+              <div className="relative aspect-[3/4] w-full shrink-0 overflow-hidden rounded-lg border border-border sm:w-24">
                 <Image src={p.product.imageUrl} alt={p.product.name} fill className="object-cover" />
               </div>
               <div className="flex-1">

@@ -3,131 +3,95 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Cursor personalizado inmersivo: reemplaza el puntero nativo por un
- * "meteorito" — cabeza brillante con una estela que se alarga según la
- * velocidad del mouse (igual que las partículas del fondo EnergyField),
- * más unas chispas de escombros detrás. Sobre elementos interactivos se
- * convierte en un aro de "objetivo". Solo se activa con mouse real
- * (pointer: fine) y si el usuario no pidió reducir animaciones — en
- * cualquier otro caso (celular, tablet, touch) no hace nada y se usa el
- * comportamiento nativo normal, porque un cursor que sigue al mouse no
- * tiene sentido en pantallas táctiles.
+ * Cursor personalizado: una estela de chispas —igual estética que las
+ * partículas del fondo EnergyField— formada por una cadena de puntos, cada
+ * uno persiguiendo al anterior con su propio retraso. Como cada punto tiene
+ * su propia fase, al girar rápido la cadena traza una curva real (no una
+ * barra rígida rotando). Sin canvas ni lecturas de layout por cuadro, para
+ * que sea robusto. Solo se activa con mouse real (pointer: fine) y si el
+ * usuario no pidió reducir animaciones — en celular/touch no hace nada.
  */
 
-const EMBER_COUNT = 4;
+const CHAIN_LENGTH = 14;
 
 export function CustomCursor() {
-  const coreRef = useRef<HTMLDivElement>(null);
-  const emberRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const dotRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     const canUseCustomCursor =
       window.matchMedia("(pointer: fine)").matches &&
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
     if (!canUseCustomCursor) return;
 
     document.documentElement.classList.add("mvs-cursor-none");
 
     const target = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const head = { x: target.x, y: target.y };
-    const embers = Array.from({ length: EMBER_COUNT }, () => ({ x: target.x, y: target.y }));
+    const points = Array.from({ length: CHAIN_LENGTH }, () => ({ x: target.x, y: target.y }));
     let rafId = 0;
     let hidden = true;
-    let currentAngle = 0;
+    let hover = false;
+
+    function setVisible(v: boolean) {
+      dotRefs.current.forEach((el) => el?.style.setProperty("opacity", v ? "1" : "0"));
+    }
 
     function onMove(e: MouseEvent) {
       target.x = e.clientX;
       target.y = e.clientY;
       if (hidden) {
         hidden = false;
-        coreRef.current?.style.setProperty("opacity", "1");
+        setVisible(true);
       }
     }
-
     function onLeave() {
       hidden = true;
-      coreRef.current?.style.setProperty("opacity", "0");
-      emberRefs.current.forEach((el) => el?.style.setProperty("opacity", "0"));
+      setVisible(false);
     }
 
     function isTextField(el: Element | null): boolean {
-      if (!el) return false;
-      return !!el.closest('input, textarea, select, [contenteditable="true"]');
+      return !!el?.closest('input, textarea, select, [contenteditable="true"]');
     }
-
     function isInteractive(el: Element | null): boolean {
-      if (!el) return false;
-      return !!el.closest('a, button, [role="button"], .cursor-hover');
+      return !!el?.closest('a, button, [role="button"], .cursor-hover');
     }
 
     function onOver(e: MouseEvent) {
       const el = e.target as Element | null;
-      const core = coreRef.current;
-      if (!core) return;
-
       if (isTextField(el)) {
-        core.style.setProperty("opacity", "0");
-      } else if (isInteractive(el)) {
-        core.dataset.hover = "true";
-        core.style.setProperty("opacity", "1");
+        setVisible(false);
       } else {
-        core.dataset.hover = "false";
-        if (!hidden) core.style.setProperty("opacity", "1");
+        hover = isInteractive(el);
+        if (!hidden) setVisible(true);
       }
-    }
-
-    function onDown() {
-      coreRef.current?.setAttribute("data-press", "true");
-    }
-    function onUp() {
-      coreRef.current?.setAttribute("data-press", "false");
     }
 
     window.addEventListener("mousemove", onMove, { passive: true });
     window.addEventListener("mouseover", onOver, { passive: true });
     document.addEventListener("mouseleave", onLeave);
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("mouseup", onUp);
 
     function tick() {
-      const dx = target.x - head.x;
-      const dy = target.y - head.y;
-      head.x += dx * 0.35;
-      head.y += dy * 0.35;
-
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // Suaviza el giro por el camino más corto en vez de saltar de golpe a
-      // la nueva dirección — así el meteorito "curva" al cambiar de rumbo
-      // en lugar de pivotar como un palito rígido.
-      if (dist > 0.6) {
-        const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-        let diff = targetAngle - currentAngle;
-        diff = ((diff + 180) % 360 + 360) % 360 - 180;
-        currentAngle += diff * 0.16;
-      }
-      const stretch = Math.min(1 + dist * 0.1, 6);
-
-      if (coreRef.current) {
-        coreRef.current.style.transform = `translate3d(${head.x}px, ${head.y}px, 0) translate(-50%, -50%) rotate(${currentAngle}deg) scaleX(${stretch})`;
+      points[0].x += (target.x - points[0].x) * 0.42;
+      points[0].y += (target.y - points[0].y) * 0.42;
+      for (let i = 1; i < CHAIN_LENGTH; i++) {
+        const ease = Math.max(0.34 - i * 0.015, 0.12);
+        points[i].x += (points[i - 1].x - points[i].x) * ease;
+        points[i].y += (points[i - 1].y - points[i].y) * ease;
       }
 
-      let prevX = head.x;
-      let prevY = head.y;
-      for (let i = 0; i < EMBER_COUNT; i++) {
-        const p = embers[i];
-        const ease = 0.24 - i * 0.03;
-        p.x += (prevX - p.x) * Math.max(ease, 0.09);
-        p.y += (prevY - p.y) * Math.max(ease, 0.09);
-        const el = emberRefs.current[i];
-        if (el) {
-          const scale = 1 - i / (EMBER_COUNT + 1);
-          el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%) scale(${scale})`;
-          el.style.opacity = hidden ? "0" : String(scale * 0.55);
-        }
-        prevX = p.x;
-        prevY = p.y;
+      const hoverScale = hover ? 1.6 : 1;
+      for (let i = 0; i < CHAIN_LENGTH; i++) {
+        const el = dotRefs.current[i];
+        if (!el) continue;
+        const p = points[i];
+        const t = i / (CHAIN_LENGTH - 1); // 0 = cabeza, 1 = cola
+        const size = Math.max((i === 0 ? 8 : 6) * (1 - t) + 1, 1) * (i === 0 ? hoverScale : 1);
+
+        el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%)`;
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        const g = Math.round(210 * (1 - t));
+        const alpha = Math.max(0.85 * (1 - t) + 0.06, 0);
+        el.style.background = `radial-gradient(circle, rgba(255,255,255,${alpha}) 0%, rgba(239,${g},${g},${alpha}) 55%, transparent 100%)`;
       }
 
       rafId = requestAnimationFrame(tick);
@@ -139,31 +103,22 @@ export function CustomCursor() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseover", onOver);
       document.removeEventListener("mouseleave", onLeave);
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mouseup", onUp);
       cancelAnimationFrame(rafId);
     };
   }, []);
 
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[9999]">
-      {Array.from({ length: EMBER_COUNT }).map((_, i) => (
+      {Array.from({ length: CHAIN_LENGTH }).map((_, i) => (
         <div
           key={i}
           ref={(el) => {
-            emberRefs.current[i] = el;
+            dotRefs.current[i] = el;
           }}
-          className="fixed left-0 top-0 h-1 w-1 rounded-full opacity-0 blur-[0.5px]"
-          style={{ background: "var(--primary-strong)", willChange: "transform" }}
+          className="mvs-cursor-dot fixed left-0 top-0 rounded-full opacity-0"
+          style={{ willChange: "transform, width, height" }}
         />
       ))}
-      <div
-        ref={coreRef}
-        data-hover="false"
-        data-press="false"
-        className="mvs-cursor-core fixed left-0 top-0 opacity-0"
-        style={{ willChange: "transform" }}
-      />
     </div>
   );
 }

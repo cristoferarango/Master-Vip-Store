@@ -38,9 +38,9 @@ export function NotificationsDropdown({
       <button
         onClick={handleOpen}
         aria-label="Notificaciones"
-        className="relative rounded-xl border border-border bg-surface p-2.5 text-foreground hover:border-border-strong"
+        className="press-feedback relative rounded-xl border border-border bg-surface p-2.5 text-foreground transition-colors duration-150 hover:border-border-strong"
       >
-        <Bell size={16} />
+        <Bell size={16} className="animate-wiggle" />
         {unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -51,7 +51,7 @@ export function NotificationsDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="glass-card absolute right-0 z-50 mt-2 w-80 rounded-2xl bg-background-elevated p-2 shadow-2xl">
+          <div className="popover-in glass-card absolute right-0 z-50 mt-2 w-80 rounded-2xl bg-background-elevated p-2 shadow-2xl">
             <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Notificaciones
             </p>

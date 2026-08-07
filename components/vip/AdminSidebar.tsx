@@ -38,7 +38,7 @@ export function AdminSidebar() {
                 : "text-muted-foreground hover:bg-surface hover:text-foreground"
             )}
           >
-            <Icon size={16} />
+            <Icon size={16} className="animate-wiggle" />
             {label}
           </Link>
         );

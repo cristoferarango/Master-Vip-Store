@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Wallet, ShoppingBag, Library, LogOut, Menu, X } from "lucide-react";
+import { Search, Wallet, ShoppingBag, Library, LogOut, Menu, X, Home } from "lucide-react";
 import { Logo } from "@/components/shared/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -39,10 +39,17 @@ export function Navbar({
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
         <Logo />
+        <Link
+          href="/streaming"
+          title="Ir al inicio de la tienda"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-border-strong hover:text-foreground"
+        >
+          <Home size={15} className="animate-float" />
+        </Link>
 
         <form action="/streaming/buscar" className="hidden flex-1 max-w-md items-center md:flex">
           <div className="flex w-full items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2">
-            <Search size={16} className="text-muted-foreground" />
+            <Search size={16} className="animate-wiggle text-muted-foreground" />
             <input
               name="q"
               placeholder="Buscar Netflix, Canva, ChatGPT..."
@@ -58,21 +65,21 @@ export function Navbar({
                 href="/streaming/wallet"
                 className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
               >
-                <Wallet size={16} className="text-accent" />
+                <Wallet size={16} className="animate-wiggle text-accent" />
                 {formatSoles(balance ?? 0)}
               </Link>
               <Link
                 href="/streaming/mis-compras"
                 className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
               >
-                <ShoppingBag size={16} />
+                <ShoppingBag size={16} className="animate-wiggle" />
                 <span className="hidden lg:inline">Mis compras</span>
               </Link>
               <Link
                 href="/streaming/biblioteca"
                 className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
               >
-                <Library size={16} />
+                <Library size={16} className="animate-wiggle" />
                 <span className="hidden lg:inline">Biblioteca</span>
               </Link>
 

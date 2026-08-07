@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Home } from "lucide-react";
 import { PanelBackground } from "@/components/shared/PanelBackground";
 import { Logo } from "@/components/shared/Logo";
 import { Badge } from "@/components/ui/Badge";
@@ -9,6 +11,13 @@ export default function VipLayout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           <Logo />
+          <Link
+            href="/vip/dashboard"
+            title="Ir al resumen del panel"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-border-strong hover:text-foreground"
+          >
+            <Home size={15} className="animate-float" />
+          </Link>
           <Badge tone="primary" className="hidden sm:inline-flex">
             Panel VIP
           </Badge>

@@ -28,16 +28,16 @@ export default async function StreamingHomePage() {
   return (
     <div className="flex flex-col gap-10">
       <section className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          Cuentas premium al mejor precio, <span className="text-gradient">al instante</span>
+        <h1 className="animate-build text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          Cuentas premium al mejor precio, <span className="text-gradient animate-text-glow inline-block">al instante</span>
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
+        <p className="animate-build build-delay-1 mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
           Netflix, HBO Max, Canva, ChatGPT, Gemini, Claude, IPTV y más — con proveedores
           verificados y soporte por WhatsApp.
         </p>
       </section>
 
-      <section>
+      <section className="animate-build build-delay-2">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Catálogo</h2>
           <span className="text-sm text-muted-foreground">{items.length} productos</span>

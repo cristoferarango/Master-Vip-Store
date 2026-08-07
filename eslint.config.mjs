@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Skill packages (.claude/skills symlinks into .agents/skills) ship
+    // their own helper scripts — not part of this app, don't lint them.
+    ".agents/**",
+    ".claude/**",
   ]),
 ]);
 

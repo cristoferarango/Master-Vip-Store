@@ -43,7 +43,7 @@ export default async function ProductDetailPage({
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-10">
       <div className="grid gap-8 md:grid-cols-2">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-border">
+        <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-border">
           <Image src={product.imageUrl} alt={product.name} fill className="object-cover" priority />
         </div>
 
