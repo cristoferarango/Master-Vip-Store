@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../lib/db/prisma";
 import { hashPassword } from "../lib/auth/password";
-import { encryptSecret } from "../lib/crypto/credentials";
+import { encryptSecret } from "../lib/crypto/credentials-core";
 import { slugify } from "../lib/utils/slug";
 
 /**
