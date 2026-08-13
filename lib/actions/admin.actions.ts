@@ -6,6 +6,8 @@ import { decryptSecret } from "@/lib/crypto/credentials";
 import { hashPassword } from "@/lib/auth/password";
 import { sendNotification } from "@/lib/notifications/notify";
 import { updateAccountSchema } from "@/lib/validators/admin.schema";
+import { scheduleSchema } from "@/lib/validators/schedule.schema";
+import { approvePurchaseRequestCore, rejectPurchaseRequestCore } from "./purchaseRequestCore";
 import type { ActionResult } from "./types";
 import type { ProviderStatus } from "@prisma/client";
 
@@ -136,89 +138,44 @@ export async function deleteUserAccount(userId: string): Promise<ActionResult<{ 
   return { ok: true, data: { id: userId } };
 }
 
-export async function approveDeposit(depositId: string): Promise<ActionResult<{ id: string }>> {
+/**
+ * Aprobación de RESPALDO desde el Panel VIP — el flujo normal es que el
+ * proveedor apruebe sus propias ventas (ver provider.actions.ts), ya que es
+ * a su Yape que le llegó el pago. El dueño puede usar esto para supervisar
+ * o resolver casos puntuales.
+ */
+export async function approvePurchaseRequest(requestId: string): Promise<ActionResult<{ purchaseId: string }>> {
   const admin = await requireAdmin();
   if (!admin) return { ok: false, error: "No autorizado." };
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const deposit = await tx.depositRequest.findUnique({ where: { id: depositId } });
-      if (!deposit) throw new Error("Solicitud no encontrada.");
-      if (deposit.status !== "PENDIENTE") throw new Error("Esta solicitud ya fue procesada.");
-
-      const wallet = await tx.wallet.upsert({
-        where: { userId: deposit.clienteId },
-        update: {},
-        create: { userId: deposit.clienteId, balance: 0 },
-      });
-
-      await tx.wallet.update({
-        where: { userId: deposit.clienteId },
-        data: { balance: { increment: deposit.amount } },
-      });
-
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "RECARGA",
-          amount: Number(deposit.amount),
-          referenceId: deposit.id,
-        },
-      });
-
-      await tx.depositRequest.update({
-        where: { id: depositId },
-        data: { status: "APROBADO", reviewedByAdminId: admin.userId, reviewedAt: new Date() },
-      });
-    });
+    const purchaseId = await approvePurchaseRequestCore(requestId, admin.userId);
+    return { ok: true, data: { purchaseId } };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Error al aprobar el depósito." };
+    return { ok: false, error: err instanceof Error ? err.message : "Error al aprobar la compra." };
   }
-
-  const deposit = await prisma.depositRequest.findUnique({ where: { id: depositId } });
-  if (deposit) {
-    await sendNotification({
-      userId: deposit.clienteId,
-      type: "DEPOSITO_APROBADO",
-      title: "Tu recarga fue aprobada",
-      message: `Se acreditaron S/ ${deposit.amount.toString()} a tu saldo.`,
-    });
-  }
-
-  return { ok: true, data: { id: depositId } };
 }
 
-export async function rejectDeposit(
-  depositId: string,
+/** Rechazo de respaldo desde el Panel VIP (ver nota en approvePurchaseRequest). */
+export async function rejectPurchaseRequest(
+  requestId: string,
   reason?: string
 ): Promise<ActionResult<{ id: string }>> {
   const admin = await requireAdmin();
   if (!admin) return { ok: false, error: "No autorizado." };
 
-  const deposit = await prisma.depositRequest.update({
-    where: { id: depositId },
-    data: {
-      status: "RECHAZADO",
-      reviewedByAdminId: admin.userId,
-      reviewedAt: new Date(),
-      rejectionReason: reason,
-    },
-  });
-
-  await sendNotification({
-    userId: deposit.clienteId,
-    type: "DEPOSITO_RECHAZADO",
-    title: "Tu recarga fue rechazada",
-    message: reason ? `Motivo: ${reason}` : "No pudimos validar tu depósito. Contáctanos por soporte.",
-  });
-
-  return { ok: true, data: { id: depositId } };
+  try {
+    await rejectPurchaseRequestCore(requestId, admin.userId, reason);
+    return { ok: true, data: { id: requestId } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Error al rechazar la compra." };
+  }
 }
 
 /** Revela credenciales de cualquier compra. Queda registrado en logs del servidor (auditoría mínima). */
 export async function revealPurchaseCredentialsAdmin(
   purchaseId: string
-): Promise<ActionResult<{ username: string; password: string }>> {
+): Promise<ActionResult<{ username: string; password: string | null }>> {
   const admin = await requireAdmin();
   if (!admin) return { ok: false, error: "No autorizado." };
 
@@ -231,7 +188,7 @@ export async function revealPurchaseCredentialsAdmin(
     ok: true,
     data: {
       username: decryptSecret(purchase.credentialUsernameEncrypted),
-      password: decryptSecret(purchase.credentialPasswordEncrypted),
+      password: purchase.credentialPasswordEncrypted ? decryptSecret(purchase.credentialPasswordEncrypted) : null,
     },
   };
 }
@@ -273,14 +230,21 @@ export async function checkExpiringPurchases(): Promise<ActionResult<{ notified:
 
 // ---------------------------------------------------------------------------
 // Lecturas
+//
+// IMPORTANTE: cada función exportada de un archivo "use server" es su propio
+// endpoint HTTP invocable directamente (así lo documenta Next.js) — no basta
+// con que la página que las usa esté protegida por el middleware. Por eso
+// TODAS, sin excepción, repiten el chequeo de admin aquí adentro.
 // ---------------------------------------------------------------------------
 
 export async function getAllUsers() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
   // Todas las cuentas no-admin (una cuenta puede ser cliente y proveedor a la vez).
   return prisma.user.findMany({
     where: { isAdmin: false },
     include: {
-      wallet: true,
       _count: { select: { purchases: true } },
       providerProfile: { select: { id: true } },
     },
@@ -295,10 +259,12 @@ export async function getAllUsers() {
  * Decimal/passwordHash crudos.
  */
 export async function getUserDetail(userId: string) {
+  const admin = await requireAdmin();
+  if (!admin) return null;
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
-      wallet: true,
       purchases: {
         include: {
           product: { select: { name: true } },
@@ -316,7 +282,6 @@ export async function getUserDetail(userId: string) {
     email: user.email,
     whatsapp: user.whatsapp,
     createdAt: user.createdAt,
-    balance: user.wallet ? user.wallet.balance.toString() : "0",
     purchases: user.purchases.map((p) => ({
       id: p.id,
       productName: p.product.name,
@@ -326,13 +291,16 @@ export async function getUserDetail(userId: string) {
       status: p.status,
       pricePaid: p.pricePaid.toString(),
       credentialUsername: decryptSecret(p.credentialUsernameEncrypted),
-      credentialPassword: decryptSecret(p.credentialPasswordEncrypted),
+      credentialPassword: p.credentialPasswordEncrypted ? decryptSecret(p.credentialPasswordEncrypted) : null,
       credentialExtra: p.credentialExtraEncrypted ? decryptSecret(p.credentialExtraEncrypted) : null,
     })),
   };
 }
 
 export async function getAllProviders() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
   return prisma.provider.findMany({
     include: {
       user: { select: { email: true, whatsapp: true, name: true } },
@@ -344,6 +312,9 @@ export async function getAllProviders() {
 }
 
 export async function getProviderDetail(providerId: string) {
+  const admin = await requireAdmin();
+  if (!admin) return null;
+
   return prisma.provider.findUnique({
     where: { id: providerId },
     include: {
@@ -362,23 +333,40 @@ export async function getProviderDetail(providerId: string) {
   });
 }
 
-export async function getPendingDeposits() {
-  return prisma.depositRequest.findMany({
+export async function getPendingPurchaseRequests() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
+  return prisma.purchaseRequest.findMany({
     where: { status: "PENDIENTE" },
-    include: { cliente: { select: { name: true, email: true, whatsapp: true } } },
+    include: {
+      cliente: { select: { name: true, whatsapp: true } },
+      product: { select: { name: true } },
+      provider: { select: { businessName: true, yapeNumber: true, yapeName: true, yapeQrUrl: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
 }
 
-export async function getAllDeposits() {
-  return prisma.depositRequest.findMany({
-    include: { cliente: { select: { name: true, email: true } } },
+export async function getAllPurchaseRequests() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
+  return prisma.purchaseRequest.findMany({
+    include: {
+      cliente: { select: { name: true, email: true } },
+      product: { select: { name: true } },
+      provider: { select: { businessName: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
 }
 
 export async function getPurchaseDetailForAdmin(purchaseId: string) {
+  const admin = await requireAdmin();
+  if (!admin) return null;
+
   return prisma.purchase.findUnique({
     where: { id: purchaseId },
     include: {
@@ -390,6 +378,9 @@ export async function getPurchaseDetailForAdmin(purchaseId: string) {
 }
 
 export async function getAllPurchases() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
   return prisma.purchase.findMany({
     include: {
       cliente: { select: { name: true } },
@@ -402,6 +393,21 @@ export async function getAllPurchases() {
 }
 
 export async function getPlatformStats() {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      totalUsers: 0,
+      newUsersThisWeek: 0,
+      totalProviders: 0,
+      activeProviders: 0,
+      pendingPurchaseRequests: 0,
+      totalPurchases: 0,
+      purchasesThisMonth: 0,
+      totalRevenue: 0,
+      revenueThisMonth: 0,
+    };
+  }
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfWeek = new Date(now);
@@ -412,7 +418,7 @@ export async function getPlatformStats() {
     newUsersThisWeek,
     totalProviders,
     activeProviders,
-    pendingDeposits,
+    pendingPurchaseRequests,
     totalPurchases,
     purchasesThisMonth,
     allPurchases,
@@ -421,7 +427,7 @@ export async function getPlatformStats() {
     prisma.user.count({ where: { isAdmin: false, createdAt: { gte: startOfWeek } } }),
     prisma.provider.count(),
     prisma.provider.count({ where: { status: "ACTIVO" } }),
-    prisma.depositRequest.count({ where: { status: "PENDIENTE" } }),
+    prisma.purchaseRequest.count({ where: { status: "PENDIENTE" } }),
     prisma.purchase.count(),
     prisma.purchase.count({ where: { purchaseDate: { gte: startOfMonth } } }),
     prisma.purchase.findMany({ select: { pricePaid: true, purchaseDate: true } }),
@@ -437,10 +443,38 @@ export async function getPlatformStats() {
     newUsersThisWeek,
     totalProviders,
     activeProviders,
-    pendingDeposits,
+    pendingPurchaseRequests,
     totalPurchases,
     purchasesThisMonth,
     totalRevenue,
     revenueThisMonth,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Horario general de la plataforma
+// ---------------------------------------------------------------------------
+
+/** Horario general de la tienda — se combina con el de cada proveedor (ver lib/utils/schedule.ts). */
+export async function getPlatformSettings() {
+  return prisma.platformSettings.upsert({
+    where: { id: "singleton" },
+    update: {},
+    create: { id: "singleton" },
+  });
+}
+
+export async function updatePlatformSettings(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, error: "No autorizado." };
+
+  const parsed = scheduleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const settings = await prisma.platformSettings.upsert({
+    where: { id: "singleton" },
+    update: { opensAt: parsed.data.opensAt || null, closesAt: parsed.data.closesAt || null },
+    create: { id: "singleton", opensAt: parsed.data.opensAt || null, closesAt: parsed.data.closesAt || null },
+  });
+  return { ok: true, data: { id: settings.id } };
 }

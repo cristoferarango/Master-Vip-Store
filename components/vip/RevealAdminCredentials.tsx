@@ -8,7 +8,7 @@ import { revealPurchaseCredentialsAdmin } from "@/lib/actions/admin.actions";
 export function RevealAdminCredentials({ purchaseId }: { purchaseId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creds, setCreds] = useState<{ username: string; password: string } | null>(null);
+  const [creds, setCreds] = useState<{ username: string; password: string | null } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   async function handleReveal() {
@@ -41,7 +41,11 @@ export function RevealAdminCredentials({ purchaseId }: { purchaseId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <Row label="Usuario" value={creds.username} copied={copied === "username"} onCopy={() => copy(creds.username, "username")} />
-      <Row label="Contraseña" value={creds.password} copied={copied === "password"} onCopy={() => copy(creds.password, "password")} />
+      {creds.password ? (
+        <Row label="Contraseña" value={creds.password} copied={copied === "password"} onCopy={() => copy(creds.password!, "password")} />
+      ) : (
+        <p className="text-xs text-muted-foreground">Sin contraseña todavía — se coordina por WhatsApp (producto tipo Activación).</p>
+      )}
     </div>
   );
 }

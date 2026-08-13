@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Star } from "lucide-react";
-import { BuyButton } from "./BuyButton";
 import { formatSoles } from "@/lib/utils/currency";
 
 export interface ProductCardData {
@@ -12,11 +11,13 @@ export interface ProductCardData {
   price: number | string;
   provider: { businessName: string; ratingAvg: number | string; ratingCount: number };
   stockAvailable: number;
+  isOpenNow: boolean;
 }
 
-export function ProductCard({ product, isLoggedIn }: { product: ProductCardData; isLoggedIn: boolean }) {
+export function ProductCard({ product }: { product: ProductCardData }) {
   const rating = Number(product.provider.ratingAvg);
   const outOfStock = product.stockAvailable <= 0;
+  const closed = !outOfStock && !product.isOpenNow;
 
   return (
     <div className="neon-trace glass-card group flex flex-col overflow-hidden rounded-2xl transition-[transform,border-color,box-shadow] duration-300 ease-[var(--ease-move)] hover:-translate-y-1.5 hover:border-border-strong hover:shadow-xl hover:shadow-primary/10">
@@ -31,6 +32,11 @@ export function ProductCard({ product, isLoggedIn }: { product: ProductCardData;
         {outOfStock && (
           <span className="absolute right-2 top-2 rounded-full bg-danger/90 px-2 py-0.5 text-xs font-medium text-white">
             Agotado
+          </span>
+        )}
+        {closed && (
+          <span className="absolute right-2 top-2 rounded-full bg-warning/90 px-2 py-0.5 text-xs font-medium text-black">
+            Fuera de horario
           </span>
         )}
       </Link>
@@ -55,7 +61,22 @@ export function ProductCard({ product, isLoggedIn }: { product: ProductCardData;
         </div>
 
         <div className="mt-1">
-          <BuyButton productId={product.id} isLoggedIn={isLoggedIn} outOfStock={outOfStock} size="sm" />
+          {outOfStock ? (
+            <span className="flex h-8 w-full cursor-not-allowed items-center justify-center rounded-lg bg-surface-strong text-sm font-medium text-muted-foreground opacity-60">
+              Agotado
+            </span>
+          ) : closed ? (
+            <span className="flex h-8 w-full cursor-not-allowed items-center justify-center rounded-lg bg-surface-strong text-sm font-medium text-warning opacity-80">
+              Fuera de horario
+            </span>
+          ) : (
+            <Link
+              href={`/streaming/productos/${product.slug}`}
+              className="press-feedback flex h-8 w-full items-center justify-center rounded-lg bg-gradient-to-r from-primary to-primary-strong text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-[filter] duration-150 ease-[var(--ease-enter)] hover:brightness-110"
+            >
+              Comprar ahora
+            </Link>
+          )}
         </div>
       </div>
     </div>

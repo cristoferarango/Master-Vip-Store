@@ -24,12 +24,6 @@ export async function registerClient(input: RegisterClientInput) {
     const valid = await verifyPassword(input.password, existing.passwordHash);
     if (!valid) throw new AuthError("Ese correo ya está registrado con otra contraseña.");
 
-    await prisma.wallet.upsert({
-      where: { userId: existing.id },
-      update: {},
-      create: { userId: existing.id, balance: 0 },
-    });
-
     return loginExistingUser(existing.id);
   }
 
@@ -42,7 +36,6 @@ export async function registerClient(input: RegisterClientInput) {
       name: input.name,
       whatsapp: input.whatsapp,
       role: "CLIENTE",
-      wallet: { create: { balance: 0 } },
     },
   });
 

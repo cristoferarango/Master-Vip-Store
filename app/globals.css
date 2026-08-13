@@ -282,6 +282,22 @@ body {
 .modal-backdrop-in { animation: modal-backdrop-in 0.18s ease-out both; }
 .modal-panel-in { animation: modal-panel-in 0.28s var(--ease-enter) both; }
 
+/*
+ * Con un modal abierto, el fondo queda tapado por el backdrop-blur — pero si
+ * detrás hay muchas tarjetas con .neon-trace (conic-gradient repintándose
+ * sin parar) el navegador tiene que volver a muestrear ese blur en cada
+ * frame, lo que se ve como parpadeo en catálogos con muchas tarjetas.
+ * Pausamos las animaciones continuas del fondo mientras el modal está
+ * abierto — igual quedan invisibles bajo el desenfoque, así que no se nota.
+ */
+body.modal-open .neon-trace::before,
+body.modal-open .animate-float,
+body.modal-open .animate-wiggle,
+body.modal-open .animate-breathe,
+body.modal-open .animate-text-glow {
+  animation-play-state: paused;
+}
+
 /* Popovers/dropdowns: emergen desde su disparador (esquina superior derecha por defecto), nunca desde el centro de la pantalla. */
 @keyframes popover-in {
   from { opacity: 0; transform: scale(0.92) translateY(-6px); }

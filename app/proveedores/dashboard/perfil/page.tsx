@@ -3,6 +3,8 @@ import { getMyProviderProfile } from "@/lib/actions/provider.actions";
 import { getMyAccount } from "@/lib/actions/auth.actions";
 import { Card } from "@/components/ui/Card";
 import { ProviderProfileForm } from "@/components/proveedores/ProviderProfileForm";
+import { ProviderPaymentForm } from "@/components/proveedores/ProviderPaymentForm";
+import { ProviderScheduleForm } from "@/components/proveedores/ProviderScheduleForm";
 import { AccountInfoCard } from "@/components/shared/AccountInfoCard";
 import { ChangePasswordForm } from "@/components/shared/ChangePasswordForm";
 
@@ -30,6 +32,26 @@ export default async function ProviderProfilePage() {
           initialBio={provider.bio ?? ""}
           initialAvatarUrl={provider.avatarUrl}
         />
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-sm font-semibold text-foreground">Cómo te pagan tus clientes</h2>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Cuando alguien compre, verá este QR y estos datos para pagarte directo por Yape.
+        </p>
+        <ProviderPaymentForm
+          initialYapeNumber={provider.yapeNumber}
+          initialYapeName={provider.yapeName}
+          initialYapeQrUrl={provider.yapeQrUrl}
+        />
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 text-sm font-semibold text-foreground">Horario de atención</h2>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Cuándo estás disponible para recibir y aprobar solicitudes de compra.
+        </p>
+        <ProviderScheduleForm initialOpensAt={provider.opensAt} initialClosesAt={provider.closesAt} />
       </Card>
 
       <Card>

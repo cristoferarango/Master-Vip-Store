@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { markAllNotificationsRead } from "@/lib/actions/notification.actions";
@@ -12,14 +13,19 @@ export interface NotificationItem {
   message: string;
   isRead: boolean;
   createdAt: Date;
+  /** Si viene, la notificación muestra un botón "Ver" que navega ahí. */
+  href?: string;
 }
 
 export function NotificationsDropdown({
   notifications,
   unreadCount,
+  onMarkRead = markAllNotificationsRead,
 }: {
   notifications: NotificationItem[];
   unreadCount: number;
+  /** Acción a ejecutar al abrir con no-leídas. Por defecto marca TODAS las notificaciones del usuario. */
+  onMarkRead?: () => Promise<unknown>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -28,7 +34,7 @@ export function NotificationsDropdown({
     const next = !open;
     setOpen(next);
     if (next && unreadCount > 0) {
-      await markAllNotificationsRead();
+      await onMarkRead();
       router.refresh();
     }
   }
@@ -62,10 +68,21 @@ export function NotificationsDropdown({
                 </p>
               ) : (
                 notifications.map((n) => (
-                  <div key={n.id} className="rounded-xl px-2.5 py-2 hover:bg-surface">
-                    <p className="text-sm font-medium text-foreground">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.message}</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground/70">{formatDatePE(n.createdAt)}</p>
+                  <div key={n.id} className="flex items-start justify-between gap-2 rounded-xl px-2.5 py-2 hover:bg-surface">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{n.title}</p>
+                      <p className="text-xs text-muted-foreground">{n.message}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">{formatDatePE(n.createdAt)}</p>
+                    </div>
+                    {n.href && (
+                      <Link
+                        href={n.href}
+                        onClick={() => setOpen(false)}
+                        className="press-feedback shrink-0 rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:brightness-110"
+                      >
+                        Ver
+                      </Link>
+                    )}
                   </div>
                 ))
               )}

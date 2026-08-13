@@ -3,19 +3,34 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Cursor personalizado: una estela de chispas —igual estética que las
- * partículas del fondo EnergyField— formada por una cadena de puntos, cada
- * uno persiguiendo al anterior con su propio retraso. Como cada punto tiene
- * su propia fase, al girar rápido la cadena traza una curva real (no una
- * barra rígida rotando). Sin canvas ni lecturas de layout por cuadro, para
- * que sea robusto. Solo se activa con mouse real (pointer: fine) y si el
- * usuario no pidió reducir animaciones — en celular/touch no hace nada.
+ * Cursor personalizado: un meteorito con cola larga y curva.
+ *
+ * La cola es una cadena de puntos con física real (cada uno persigue al
+ * anterior con su propio retraso — igual que las chispas del fondo), pero
+ * en vez de dibujar cada punto como un círculo suelto (eso se ve como
+ * "puntos que lo siguen"), se dibuja el SEGMENTO entre cada par de puntos
+ * consecutivos como una barra corta rotada que los conecta — así no hay
+ * huecos y se lee como una sola cola continua que se curva de verdad
+ * cuando el mouse cambia de dirección (no una barra rígida rotando).
+ * Color: blanco brillante en la cabeza (el calor de la fricción) que se
+ * apaga a rojo hacia la punta de la cola, como un meteorito calentándose.
+ * Sin canvas (se descartó antes por inestable) — todo con transforms de
+ * DOM. Solo con mouse real (pointer: fine) y sin "reducir movimiento".
  */
 
-const CHAIN_LENGTH = 14;
+const CHAIN_LENGTH = 17; // más puntos = cola más larga
+
+function mixWhiteToRed(t: number): string {
+  const r = Math.round(255 - 16 * t);
+  const g = Math.round(255 - 187 * t);
+  const b = Math.round(255 - 187 * t);
+  return `${r},${g},${b}`;
+}
 
 export function CustomCursor() {
-  const dotRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const headRef = useRef<HTMLDivElement | null>(null);
+  const haloRef = useRef<HTMLDivElement | null>(null);
+  const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     const canUseCustomCursor =
@@ -32,7 +47,10 @@ export function CustomCursor() {
     let hover = false;
 
     function setVisible(v: boolean) {
-      dotRefs.current.forEach((el) => el?.style.setProperty("opacity", v ? "1" : "0"));
+      const op = v ? "1" : "0";
+      headRef.current?.style.setProperty("opacity", op);
+      haloRef.current?.style.setProperty("opacity", op);
+      segmentRefs.current.forEach((el) => el?.style.setProperty("opacity", op));
     }
 
     function onMove(e: MouseEvent) {
@@ -70,28 +88,57 @@ export function CustomCursor() {
     document.addEventListener("mouseleave", onLeave);
 
     function tick() {
-      points[0].x += (target.x - points[0].x) * 0.42;
-      points[0].y += (target.y - points[0].y) * 0.42;
+      // Cadena: cada punto persigue al anterior con su propio retraso — así
+      // la cola se curva de verdad al cambiar de dirección, en vez de girar
+      // como una barra rígida.
+      points[0].x += (target.x - points[0].x) * 0.4;
+      points[0].y += (target.y - points[0].y) * 0.4;
       for (let i = 1; i < CHAIN_LENGTH; i++) {
-        const ease = Math.max(0.34 - i * 0.015, 0.12);
+        const ease = Math.max(0.36 - i * 0.014, 0.1);
         points[i].x += (points[i - 1].x - points[i].x) * ease;
         points[i].y += (points[i - 1].y - points[i].y) * ease;
       }
 
-      const hoverScale = hover ? 1.6 : 1;
-      for (let i = 0; i < CHAIN_LENGTH; i++) {
-        const el = dotRefs.current[i];
-        if (!el) continue;
-        const p = points[i];
-        const t = i / (CHAIN_LENGTH - 1); // 0 = cabeza, 1 = cola
-        const size = Math.max((i === 0 ? 8 : 6) * (1 - t) + 1, 1) * (i === 0 ? hoverScale : 1);
+      const hoverScale = hover ? 1.7 : 1;
+      const headSize = 9 * hoverScale;
 
-        el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%)`;
-        el.style.width = `${size}px`;
-        el.style.height = `${size}px`;
-        const g = Math.round(210 * (1 - t));
-        const alpha = Math.max(0.85 * (1 - t) + 0.06, 0);
-        el.style.background = `radial-gradient(circle, rgba(255,255,255,${alpha}) 0%, rgba(239,${g},${g},${alpha}) 55%, transparent 100%)`;
+      const headEl = headRef.current;
+      const haloEl = haloRef.current;
+      if (headEl) {
+        headEl.style.transform = `translate3d(${points[0].x}px, ${points[0].y}px, 0) translate(-50%, -50%)`;
+        headEl.style.width = `${headSize}px`;
+        headEl.style.height = `${headSize}px`;
+      }
+      if (haloEl) {
+        const haloSize = 30 * hoverScale;
+        haloEl.style.transform = `translate3d(${points[0].x}px, ${points[0].y}px, 0) translate(-50%, -50%)`;
+        haloEl.style.width = `${haloSize}px`;
+        haloEl.style.height = `${haloSize}px`;
+      }
+
+      // Un segmento por cada par de puntos consecutivos — conecta la cadena
+      // sin huecos y cada uno lleva su propio color/ángulo/largo.
+      for (let i = 0; i < CHAIN_LENGTH - 1; i++) {
+        const el = segmentRefs.current[i];
+        if (!el) continue;
+        const from = points[i];
+        const to = points[i + 1];
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.hypot(dx, dy) + 1; // +1 evita huecos por redondeo entre segmentos
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+        const t = i / (CHAIN_LENGTH - 2); // 0 = junto a la cabeza, 1 = punta de la cola
+        const thickness = Math.max(6 * (1 - t) + 1, 1);
+        const opacity = Math.max(0.95 * (1 - Math.pow(t, 1.5)), 0);
+
+        el.style.transform = `translate3d(${from.x}px, ${from.y}px, 0) rotate(${angle}deg)`;
+        el.style.width = `${length}px`;
+        el.style.height = `${thickness}px`;
+        el.style.marginTop = `${-thickness / 2}px`;
+        el.style.opacity = `${opacity}`;
+        el.style.background = `rgb(${mixWhiteToRed(t)})`;
+        el.style.boxShadow = `0 0 ${4 + thickness}px rgba(${mixWhiteToRed(Math.min(t + 0.15, 1))},${opacity * 0.8})`;
       }
 
       rafId = requestAnimationFrame(tick);
@@ -108,17 +155,47 @@ export function CustomCursor() {
   }, []);
 
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[9999]">
-      {Array.from({ length: CHAIN_LENGTH }).map((_, i) => (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[9999] mix-blend-screen">
+      {/* Halo: bloom suave detrás de la cabeza, le da el "brillo" de meteorito. */}
+      <div
+        ref={haloRef}
+        className="fixed left-0 top-0 rounded-full opacity-0 blur-md"
+        style={{
+          willChange: "transform, width, height",
+          background: "radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(239,68,68,0.55) 45%, transparent 75%)",
+        }}
+      />
+      {/*
+        Segmentos de la cola: cada `div` conecta dos puntos consecutivos de
+        la cadena. `left:0` + `transformOrigin: "0% 50%"` anclan el borde
+        IZQUIERDO del segmento (su punto de partida) en el punto de la
+        cadena — así translate3d lo planta ahí y el segmento se dibuja hacia
+        el siguiente punto, sin el desfase que da usar solo el ancho/alto.
+      */}
+      {Array.from({ length: CHAIN_LENGTH - 1 }).map((_, i) => (
         <div
           key={i}
           ref={(el) => {
-            dotRefs.current[i] = el;
+            segmentRefs.current[i] = el;
           }}
-          className="mvs-cursor-dot fixed left-0 top-0 rounded-full opacity-0"
-          style={{ willChange: "transform, width, height" }}
+          className="fixed left-0 top-0 opacity-0 blur-[0.5px]"
+          style={{
+            borderRadius: 999,
+            transformOrigin: "0% 50%",
+            willChange: "transform, width, height, opacity, background, box-shadow",
+          }}
         />
       ))}
+      {/* Cabeza: núcleo brillante y nítido. */}
+      <div
+        ref={headRef}
+        className="fixed left-0 top-0 rounded-full opacity-0"
+        style={{
+          willChange: "transform, width, height",
+          background: "radial-gradient(circle, #ffffff 0%, #ffb4b4 45%, #ef4444 100%)",
+          boxShadow: "0 0 6px 1px rgba(255,255,255,0.9), 0 0 16px 4px rgba(239,68,68,0.7)",
+        }}
+      />
     </div>
   );
 }

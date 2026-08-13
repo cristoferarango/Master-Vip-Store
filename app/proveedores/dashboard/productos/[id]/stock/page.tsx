@@ -28,7 +28,7 @@ export default async function ProductStockPage({ params }: { params: Promise<{ i
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Agregar cuenta al stock</h2>
-        <StockCredentialForm productId={product.id} />
+        <StockCredentialForm productId={product.id} productType={product.type} />
       </Card>
 
       <Card>
@@ -38,7 +38,7 @@ export default async function ProductStockPage({ params }: { params: Promise<{ i
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {stock.map((s) => (
-              <StockRow key={s.id} stock={s} />
+              <StockRow key={s.id} stock={s} productType={product.type} />
             ))}
           </div>
         )}

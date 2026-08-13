@@ -48,3 +48,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/scheduled_tasks.lock
+
+# skills personales de seguridad/investigación (no van al repo público)
+.claude/skills/0day-scanner/
+.claude/skills/cti-search-skill/
+.claude/skills/notebooklm/
+.claude/skills/opengrep-rule-generator/
+.claude/skills/opengrep-rule-generator-research/
+.claude/skills/secure-prd-skill/
+.claude/skills/security-assessment/
+.claude/skills/security-reviewer/
+.claude/skills/threat-modeling/

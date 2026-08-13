@@ -16,6 +16,7 @@ export interface ProductFormInitial {
   conditions: string;
   price: string;
   durationDays: string;
+  type?: "STOCK" | "ACTIVACION";
 }
 
 export function ProductForm({
@@ -35,6 +36,7 @@ export function ProductForm({
   const [conditions, setConditions] = useState(initial?.conditions ?? "");
   const [price, setPrice] = useState(initial?.price ?? "");
   const [durationDays, setDurationDays] = useState(initial?.durationDays ?? "30");
+  const [type, setType] = useState<"STOCK" | "ACTIVACION">(initial?.type ?? "STOCK");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,7 +71,7 @@ export function ProductForm({
     }
 
     setLoading(true);
-    const input = { name, categoryId, imageUrl, description, conditions, price, durationDays };
+    const input = { name, categoryId, imageUrl, description, conditions, price, durationDays, type };
 
     const result = isEdit
       ? await updateProduct(initial!.id!, input)
@@ -103,6 +105,23 @@ export function ProductForm({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-foreground/90">Tipo de producto</label>
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as "STOCK" | "ACTIVACION")}
+          className="h-11 rounded-xl border border-border bg-surface px-3.5 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="STOCK" className="bg-background-elevated">Stock — entrego usuario y contraseña ya listos</option>
+          <option value="ACTIVACION" className="bg-background-elevated">Activación — el cliente da su correo, yo doy la contraseña por WhatsApp</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {type === "STOCK"
+            ? "Al comprar, se entrega la cuenta completa de una vez."
+            : "Al comprar, el cliente escribe el correo donde activará el servicio y le llega tu WhatsApp para coordinar. Le das la contraseña ahí cuando la active."}
+        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">

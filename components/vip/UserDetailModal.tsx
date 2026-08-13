@@ -35,8 +35,10 @@ export function UserDetailButton({ userId, userName }: { userId: string; userNam
         {detail && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-              <span className="text-sm text-muted-foreground">Saldo actual</span>
-              <span className="font-semibold text-foreground">{formatSoles(detail.balance)}</span>
+              <span className="text-sm text-muted-foreground">Gastado en total</span>
+              <span className="font-semibold text-foreground">
+                {formatSoles(detail.purchases.reduce((sum, p) => sum + Number(p.pricePaid), 0))}
+              </span>
             </div>
 
             <div>
@@ -64,7 +66,11 @@ export function UserDetailButton({ userId, userName }: { userId: string; userNam
                       </p>
                       <div className="mt-2 grid gap-1.5 border-t border-border pt-2 sm:grid-cols-3">
                         <CredField label="Usuario" value={p.credentialUsername} />
-                        <CredField label="Contraseña" value={p.credentialPassword} />
+                        {p.credentialPassword ? (
+                          <CredField label="Contraseña" value={p.credentialPassword} />
+                        ) : (
+                          <p className="self-end text-[11px] text-muted-foreground">Contraseña: se coordina por WhatsApp.</p>
+                        )}
                         {p.credentialExtra && <CredField label="PIN / notas" value={p.credentialExtra} />}
                       </div>
                     </div>

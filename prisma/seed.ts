@@ -27,28 +27,33 @@ async function main() {
       whatsapp: process.env.ADMIN_WHATSAPP ?? "934546289",
       role: "ADMIN",
       isAdmin: true,
-      wallet: { create: { balance: 100 } },
       providerProfile: {
         create: {
           businessName: "Master Vip Store",
           status: "ACTIVO",
           activatedAt: new Date(),
+          yapeNumber: process.env.YAPE_NUMBER ?? process.env.ADMIN_WHATSAPP ?? "934546289",
+          yapeName: process.env.ADMIN_NAME ?? "Dueño Master Vip Store",
         },
       },
     },
-    include: { providerProfile: true, wallet: true },
+    include: { providerProfile: true },
   });
 
-  // Si la cuenta ya existía sin alguna de las dos capacidades, se las agrega.
+  // Si la cuenta ya existía sin el perfil de proveedor, se lo agrega.
   let providerId = owner.providerProfile?.id;
   if (!providerId) {
     const provider = await prisma.provider.create({
-      data: { userId: owner.id, businessName: "Master Vip Store", status: "ACTIVO", activatedAt: new Date() },
+      data: {
+        userId: owner.id,
+        businessName: "Master Vip Store",
+        status: "ACTIVO",
+        activatedAt: new Date(),
+        yapeNumber: process.env.YAPE_NUMBER ?? process.env.ADMIN_WHATSAPP ?? "934546289",
+        yapeName: process.env.ADMIN_NAME ?? "Dueño Master Vip Store",
+      },
     });
     providerId = provider.id;
-  }
-  if (!owner.wallet) {
-    await prisma.wallet.create({ data: { userId: owner.id, balance: 100 } });
   }
 
   console.log(`Cuenta lista: ${owner.email} (admin + proveedor + cliente)`);

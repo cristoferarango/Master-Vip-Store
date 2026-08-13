@@ -27,8 +27,11 @@ enum ProviderStatus {
   SUSPENDIDO
 }
 
+// RESERVADA = un cliente ya la apartó y está esperando que el admin
+// verifique su captura de pago; vuelve a DISPONIBLE si se rechaza.
 enum StockStatus {
   DISPONIBLE
+  RESERVADA
   VENDIDA
 }
 
@@ -38,25 +41,31 @@ enum PurchaseStatus {
   REEMBOLSADA
 }
 
-enum DepositStatus {
+// STOCK = se entrega usuario+contraseña de una vez (cuenta lista).
+// ACTIVACION = el proveedor solo entrega correo+PIN; la contraseña se la da
+// después por WhatsApp al cliente, cuando este intenta activar la plataforma
+// en su propia cuenta/correo (por eso ese tipo pide el correo del cliente).
+enum ProductType {
+  STOCK
+  ACTIVACION
+}
+
+// Cada compra es un pago directo al Yape del proveedor — no hay saldo
+// genérico guardado, cada solicitud es para una cuenta específica.
+enum PurchaseRequestStatus {
   PENDIENTE
   APROBADO
   RECHAZADO
 }
 
-enum WalletTxType {
-  RECARGA
-  COMPRA
-  AJUSTE
-}
-
 enum NotificationType {
-  DEPOSITO_APROBADO
-  DEPOSITO_RECHAZADO
+  COMPRA_APROBADA
+  COMPRA_RECHAZADA
   CUENTA_POR_VENCER
   CUENTA_VENCIDA
   BIENVENIDA
   PROVEEDOR_ACTIVADO
+  SOLICITUD_COMPRA_NUEVA
 }
 
 enum NotificationChannel {
@@ -81,12 +90,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  wallet          Wallet?
-  providerProfile Provider?
-  purchases       Purchase[]
-  depositRequests DepositRequest[]
-  reviews         Review[]
-  notifications   Notification[]
+  providerProfile  Provider?
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
+  notifications    Notification[]
 
   @@index([role])
 }
@@ -102,22 +110,35 @@ model Provider {
   ratingAvg    Decimal        @default(0)
   ratingCount  Int            @default(0)
   activatedAt  DateTime?
+
+  // Datos de pago propios — cada proveedor cobra directo a su Yape.
+  yapeQrUrl    String?
+  yapeNumber   String?
+  yapeName     String?
+
+  // Horario en el que este proveedor atiende (formato "HH:mm"). Si alguno
+  // de los dos queda null, se interpreta como disponible todo el día.
+  opensAt  String?
+  closesAt String?
+
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  products  Product[]
-  purchases Purchase[]
-  reviews   Review[]
+  products         Product[]
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
 
   @@index([status])
 }
 
 model Category {
-  id      String @id @default(cuid())
-  name    String @unique
-  slug    String @unique
-  iconUrl String?
-  order   Int    @default(0)
+  id    String  @id @default(cuid())
+  name  String  @unique
+  slug  String  @unique
+  // Ícono corto (emoji, ej. "🎬") mostrado en la cinta superior y en Biblioteca.
+  icon  String?
+  order Int     @default(0)
 
   products Product[]
 }
@@ -135,13 +156,15 @@ model Product {
   conditions   String
   price        Decimal
   durationDays Int
+  type         ProductType @default(STOCK)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  stockItems AccountStock[]
-  purchases  Purchase[]
-  reviews    Review[]
+  stockItems       AccountStock[]
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
 
   @@index([categoryId])
   @@index([providerId])
@@ -153,9 +176,11 @@ model AccountStock {
   productId          String
   product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
   usernameEncrypted  String
-  passwordEncrypted  String
+  // Nula en productos tipo ACTIVACION — la contraseña se coordina por WhatsApp.
+  passwordEncrypted  String?
   extraInfoEncrypted String?
   status             StockStatus  @default(DISPONIBLE)
+  purchaseRequest    PurchaseRequest?
   purchase           Purchase?
   createdAt          DateTime     @default(now())
 
@@ -172,64 +197,61 @@ model Purchase {
   product         Product  @relation(fields: [productId], references: [id])
   accountStockId  String   @unique
   accountStock    AccountStock @relation(fields: [accountStockId], references: [id])
+  requestId       String?  @unique
+  request         PurchaseRequest? @relation(fields: [requestId], references: [id])
 
   pricePaid       Decimal
   purchaseDate    DateTime       @default(now())
   expirationDate  DateTime
   status          PurchaseStatus @default(ACTIVA)
 
-  // Snapshot cifrado propio, inmutable aunque el proveedor edite el AccountStock original
+  // Solo para productos tipo ACTIVACION: el correo del cliente donde se activa el servicio.
+  clientEmail String?
+
+  // Snapshot cifrado propio, inmutable aunque el proveedor edite el AccountStock original.
+  // La contraseña queda nula en compras ACTIVACION — se coordina por WhatsApp.
   credentialUsernameEncrypted String
-  credentialPasswordEncrypted String
+  credentialPasswordEncrypted String?
   credentialExtraEncrypted    String?
 
-  review    Review?
-  createdAt DateTime @default(now())
+  review        Review?
+  createdAt     DateTime @default(now())
 
   @@index([clienteId])
   @@index([providerId])
 }
 
 // ---------------------------------------------------------------------------
-// Wallet / pagos
+// Pagos: solicitud de compra con captura de Yape (sin saldo/billetera)
 // ---------------------------------------------------------------------------
 
-model Wallet {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance   Decimal  @default(0)
-  updatedAt DateTime @updatedAt
+model PurchaseRequest {
+  id             String   @id @default(cuid())
+  clienteId      String
+  cliente        User     @relation(fields: [clienteId], references: [id])
+  providerId     String
+  provider       Provider @relation(fields: [providerId], references: [id])
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id])
+  accountStockId String   @unique
+  accountStock   AccountStock @relation(fields: [accountStockId], references: [id])
 
-  transactions WalletTransaction[]
-}
-
-model WalletTransaction {
-  id          String       @id @default(cuid())
-  walletId    String
-  wallet      Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  type        WalletTxType
-  amount      Decimal      // positivo = ingreso, negativo = egreso
-  referenceId String?
-  createdAt   DateTime     @default(now())
-
-  @@index([walletId])
-}
-
-model DepositRequest {
-  id                String        @id @default(cuid())
-  clienteId         String
-  cliente           User          @relation(fields: [clienteId], references: [id])
   amount            Decimal
+  screenshotUrl     String
   operationCode     String?
-  screenshotUrl     String?
-  status            DepositStatus @default(PENDIENTE)
+  // Solo para productos tipo ACTIVACION: el correo del cliente donde se activa el servicio.
+  clientEmail       String?
+  status            PurchaseRequestStatus @default(PENDIENTE)
   reviewedByAdminId String?
   reviewedAt        DateTime?
   rejectionReason   String?
-  createdAt         DateTime      @default(now())
+  createdAt         DateTime @default(now())
+
+  purchase Purchase?
 
   @@index([status])
+  @@index([clienteId])
+  @@index([providerId])
 }
 
 // ---------------------------------------------------------------------------
@@ -267,4 +289,13 @@ model Notification {
   createdAt DateTime            @default(now())
 
   @@index([userId, isRead])
+}
+
+// Fila única (id fijo "singleton") con el horario general de la plataforma
+// — lo configura el dueño desde el Panel VIP. Igual que en Provider, si
+// algún campo queda null se interpreta como disponible todo el día.
+model PlatformSettings {
+  id       String  @id @default("singleton")
+  opensAt  String?
+  closesAt String?
 }

@@ -3,12 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Wallet, ShoppingBag, Library, LogOut, Menu, X, Home } from "lucide-react";
+import { Search, ShoppingBag, Library, LogOut, Menu, X, Home } from "lucide-react";
 import { Logo } from "@/components/shared/Logo";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { NotificationsDropdown, type NotificationItem } from "./NotificationsDropdown";
-import { formatSoles } from "@/lib/utils/currency";
 
 export interface NavbarUser {
   name: string;
@@ -17,12 +16,10 @@ export interface NavbarUser {
 
 export function Navbar({
   user,
-  balance,
   notifications,
   unreadCount,
 }: {
   user: NavbarUser | null;
-  balance?: number;
   notifications?: NotificationItem[];
   unreadCount?: number;
 }) {
@@ -61,13 +58,6 @@ export function Navbar({
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           {user ? (
             <>
-              <Link
-                href="/streaming/wallet"
-                className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
-              >
-                <Wallet size={16} className="animate-wiggle text-accent" />
-                {formatSoles(balance ?? 0)}
-              </Link>
               <Link
                 href="/streaming/mis-compras"
                 className="hidden items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground hover:border-border-strong sm:flex"
@@ -114,16 +104,6 @@ export function Navbar({
 
       {user && menuOpen && (
         <div className="flex flex-col gap-1 border-t border-border px-4 py-3 sm:hidden">
-          <Link
-            href="/streaming/wallet"
-            onClick={() => setMenuOpen(false)}
-            className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium text-foreground hover:bg-surface"
-          >
-            <span className="flex items-center gap-2">
-              <Wallet size={16} className="text-accent" /> Saldo
-            </span>
-            <span>{formatSoles(balance ?? 0)}</span>
-          </Link>
           <Link
             href="/streaming/mis-compras"
             onClick={() => setMenuOpen(false)}

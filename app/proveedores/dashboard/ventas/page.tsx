@@ -48,13 +48,20 @@ export default async function ProviderSalesPage() {
                   >
                     <MessageCircle size={13} /> {s.cliente.whatsapp}
                   </a>
+                  {s.clientEmail && <p className="text-xs text-muted-foreground">Correo a activar: {s.clientEmail}</p>}
                 </div>
-                <span className="font-semibold text-foreground">{formatSoles(s.pricePaid.toString())}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">{formatSoles(s.pricePaid.toString())}</span>
+                </div>
               </div>
 
               <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-3">
-                <CredField label="Usuario entregado" value={s.credentialUsername} />
-                <CredField label="Contraseña entregada" value={s.credentialPassword} />
+                <CredField label={s.product.type === "ACTIVACION" ? "Correo entregado" : "Usuario entregado"} value={s.credentialUsername} />
+                {s.credentialPassword ? (
+                  <CredField label="Contraseña entregada" value={s.credentialPassword} />
+                ) : (
+                  <p className="self-end text-xs text-muted-foreground">Contraseña: se la das por WhatsApp cuando la active.</p>
+                )}
                 {s.credentialExtra && <CredField label="PIN / notas" value={s.credentialExtra} />}
               </div>
             </Card>

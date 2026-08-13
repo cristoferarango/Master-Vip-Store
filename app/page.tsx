@@ -12,11 +12,11 @@ export default function RootPage() {
           <span className="word-rise mr-3">
             <span style={{ animationDelay: "0s" }}>MASTER</span>
           </span>
-          <span className="word-rise text-gradient animate-text-glow mr-3">
-            <span style={{ animationDelay: "0.1s" }}>VIP</span>
+          <span className="word-rise mr-3">
+            <span className="text-gradient animate-text-glow inline-block" style={{ animationDelay: "0.1s" }}>VIP</span>
           </span>
-          <span className="word-rise text-gradient animate-text-glow">
-            <span style={{ animationDelay: "0.2s" }}>STORE</span>
+          <span className="word-rise">
+            <span className="text-gradient animate-text-glow inline-block" style={{ animationDelay: "0.2s" }}>STORE</span>
           </span>
         </h1>
         <p className="animate-build build-delay-1 mt-4 text-base text-muted-foreground sm:text-lg">
@@ -44,7 +44,7 @@ export default function RootPage() {
         <HubCard
           href="/vip"
           icon={Crown}
-          title="Master"
+          title="Master Vip Store"
           description="Control del panel Master Vip Store."
           buttonLabel="Acceso VIP"
           shimmerDelay={2.4}

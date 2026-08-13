@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Package, Receipt, UserCircle, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, ReceiptText, Receipt, UserCircle, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
   { href: "/proveedores/dashboard", label: "Resumen", icon: LayoutDashboard },
+  { href: "/proveedores/dashboard/solicitudes", label: "Solicitudes", icon: ReceiptText },
   { href: "/proveedores/dashboard/productos", label: "Productos", icon: Package },
   { href: "/proveedores/dashboard/ventas", label: "Ventas", icon: Receipt },
   { href: "/proveedores/dashboard/perfil", label: "Perfil", icon: UserCircle },
