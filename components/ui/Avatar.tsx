@@ -23,8 +23,9 @@ export function Avatar({ src, name, size = 40, className }: AvatarProps) {
         alt={name}
         width={size}
         height={size}
-        className={cn("rounded-full object-cover border border-border-strong", className)}
+        className={cn("avatar-circle rounded-full object-cover border border-border-strong", className)}
         style={{ width: size, height: size }}
+        unoptimized
       />
     );
   }
@@ -32,7 +33,7 @@ export function Avatar({ src, name, size = 40, className }: AvatarProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent-2 text-primary-foreground font-semibold border border-border-strong",
+        "avatar-circle flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent-2 text-primary-foreground font-semibold border border-border-strong",
         className
       )}
       style={{ width: size, height: size, fontSize: size * 0.4 }}

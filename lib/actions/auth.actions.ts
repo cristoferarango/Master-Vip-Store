@@ -3,9 +3,44 @@ import { prisma } from "@/lib/db/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { sendNotification } from "@/lib/notifications/notify";
+import { generateReferralCode } from "@/lib/utils/referral";
 import type { RegisterClientInput, RegisterProviderInput, LoginInput } from "@/lib/validators/auth.schema";
 
 export class AuthError extends Error {}
+
+/**
+ * WhatsApp del dueño (única cuenta con isAdmin=true) — usado como contacto
+ * público de "olvidé mi contraseña": el formulario le arma un WhatsApp
+ * pre-llenado al dueño, quien le cambia la contraseña a mano desde
+ * Panel Master → Usuarios (esa cuenta nunca guarda la contraseña en claro,
+ * solo su hash — ver lib/auth/password.ts).
+ */
+export async function getSupportWhatsapp(): Promise<string | null> {
+  const admin = await prisma.user.findFirst({ where: { isAdmin: true }, select: { whatsapp: true } });
+  return admin?.whatsapp ?? null;
+}
+
+/** Genera un código de referido único (reintenta si por casualidad choca con uno existente). */
+async function uniqueReferralCode(): Promise<string> {
+  for (let i = 0; i < 5; i++) {
+    const code = generateReferralCode();
+    const taken = await prisma.user.findUnique({ where: { referralCode: code } });
+    if (!taken) return code;
+  }
+  return `${generateReferralCode()}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+/**
+ * Si vino un código de referido válido, la cuenta nueva queda marcada como
+ * seller PENDIENTE — el dueño (u otro seller) la activa desde el Panel VIP,
+ * y recién ahí ve los precios "Seller" de los productos.
+ */
+async function resolveSellerFields(referredByCode?: string) {
+  if (!referredByCode) return { isSeller: false as const, sellerStatus: undefined, referredByCode: undefined };
+  const referrer = await prisma.user.findUnique({ where: { referralCode: referredByCode } });
+  if (!referrer) throw new AuthError("El código de referido no existe.");
+  return { isSeller: true as const, sellerStatus: "PENDIENTE" as const, referredByCode };
+}
 
 /**
  * Una misma cuenta (mismo correo) puede tener varias capacidades a la vez:
@@ -24,25 +59,26 @@ export async function registerClient(input: RegisterClientInput) {
     const valid = await verifyPassword(input.password, existing.passwordHash);
     if (!valid) throw new AuthError("Ese correo ya está registrado con otra contraseña.");
 
-    await prisma.wallet.upsert({
-      where: { userId: existing.id },
-      update: {},
-      create: { userId: existing.id, balance: 0 },
-    });
-
     return loginExistingUser(existing.id);
   }
 
+  const usernameTaken = await prisma.user.findUnique({ where: { username: input.username } });
+  if (usernameTaken) throw new AuthError("Ese nombre de usuario ya está ocupado.");
+
   const passwordHash = await hashPassword(input.password);
+  const referralCode = await uniqueReferralCode();
+  const sellerFields = await resolveSellerFields(input.referredByCode || undefined);
 
   const user = await prisma.user.create({
     data: {
       email: input.email,
       passwordHash,
       name: input.name,
+      username: input.username,
       whatsapp: input.whatsapp,
       role: "CLIENTE",
-      wallet: { create: { balance: 0 } },
+      referralCode,
+      ...sellerFields,
     },
   });
 
@@ -58,7 +94,9 @@ export async function registerClient(input: RegisterClientInput) {
     userId: user.id,
     type: "BIENVENIDA",
     title: `¡Bienvenido a Master Vip Store, ${user.name}!`,
-    message: "Ya puedes explorar el catálogo y recargar saldo por Yape para tu primera compra.",
+    message: sellerFields.isSeller
+      ? "Ya puedes explorar el catálogo. Tu solicitud como seller está pendiente de activación."
+      : "Ya puedes explorar el catálogo y comprar tu primera cuenta.",
   });
 
   return user;
@@ -102,15 +140,23 @@ export async function registerProvider(input: RegisterProviderInput) {
     return loginExistingUser(existing.id);
   }
 
+  const usernameTaken = await prisma.user.findUnique({ where: { username: input.username } });
+  if (usernameTaken) throw new AuthError("Ese nombre de usuario ya está ocupado.");
+
   const passwordHash = await hashPassword(input.password);
+  const referralCode = await uniqueReferralCode();
+  const sellerFields = await resolveSellerFields(input.referredByCode || undefined);
 
   const user = await prisma.user.create({
     data: {
       email: input.email,
       passwordHash,
       name: input.name,
+      username: input.username,
       whatsapp: input.whatsapp,
       role: "PROVEEDOR",
+      referralCode,
+      ...sellerFields,
       providerProfile: {
         create: {
           businessName: input.businessName,
@@ -162,13 +208,13 @@ async function loginExistingUser(userId: string) {
 /** Login genérico: sirve para cualquier cuenta — el acceso a cada panel se decide por capacidad (ver session.ts), no por un rol único. */
 export async function login(input: LoginInput) {
   const user = await prisma.user.findUnique({
-    where: { email: input.email },
+    where: { username: input.username },
     include: { providerProfile: true },
   });
-  if (!user) throw new AuthError("Correo o contraseña incorrectos.");
+  if (!user) throw new AuthError("Usuario o contraseña incorrectos.");
 
   const valid = await verifyPassword(input.password, user.passwordHash);
-  if (!valid) throw new AuthError("Correo o contraseña incorrectos.");
+  if (!valid) throw new AuthError("Usuario o contraseña incorrectos.");
 
   await createSession({
     userId: user.id,
@@ -201,6 +247,11 @@ export async function changePassword(userId: string, currentPassword: string, ne
 export async function getMyAccount(userId: string) {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, whatsapp: true, createdAt: true, isAdmin: true },
+    select: { id: true, name: true, email: true, whatsapp: true, username: true, referralCode: true, createdAt: true, isAdmin: true },
   });
+}
+
+/** Cambia el WhatsApp de la cuenta en sesión (cliente o proveedor). */
+export async function updateWhatsapp(userId: string, whatsapp: string) {
+  await prisma.user.update({ where: { id: userId }, data: { whatsapp } });
 }

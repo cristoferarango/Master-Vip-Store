@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // their own helper scripts — not part of this app, don't lint them.
     ".agents/**",
     ".claude/**",
+    // Entry file para hostings tipo cPanel (Passenger) — Node CommonJS
+    // plano a propósito, no pasa por el bundler de Next.
+    "server.js",
   ]),
 ]);
 

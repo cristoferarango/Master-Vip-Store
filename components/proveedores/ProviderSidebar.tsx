@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Package, Receipt, UserCircle, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, ReceiptText, Receipt, UserCircle, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/proveedores/dashboard", label: "Resumen", icon: LayoutDashboard },
-  { href: "/proveedores/dashboard/productos", label: "Productos", icon: Package },
-  { href: "/proveedores/dashboard/ventas", label: "Ventas", icon: Receipt },
-  { href: "/proveedores/dashboard/perfil", label: "Perfil", icon: UserCircle },
+  { href: "/provee/dashboard", label: "Resumen", icon: LayoutDashboard },
+  { href: "/provee/dashboard/solicitudes", label: "Solicitudes", icon: ReceiptText },
+  { href: "/provee/dashboard/productos", label: "Productos", icon: Package },
+  { href: "/provee/dashboard/ventas", label: "Ventas", icon: Receipt },
+  { href: "/provee/dashboard/perfil", label: "Perfil", icon: UserCircle },
 ];
 
 export function ProviderSidebar({ businessName }: { businessName: string }) {
@@ -18,7 +19,7 @@ export function ProviderSidebar({ businessName }: { businessName: string }) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/proveedores");
+    router.push("/provee");
     router.refresh();
   }
 

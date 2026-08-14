@@ -1,6 +1,6 @@
 import { ProductCard, type ProductCardData } from "./ProductCard";
 
-export function ProductGrid({ products, isLoggedIn }: { products: ProductCardData[]; isLoggedIn: boolean }) {
+export function ProductGrid({ products }: { products: ProductCardData[] }) {
   if (products.length === 0) {
     return (
       <div className="glass-card rounded-2xl p-10 text-center text-muted-foreground">
@@ -15,7 +15,7 @@ export function ProductGrid({ products, isLoggedIn }: { products: ProductCardDat
         const d = Math.min(i * 0.045, 0.4);
         return (
           <div key={product.slug} className="animate-build-float" style={{ animationDelay: `${d}s, ${d + 0.5}s` }}>
-            <ProductCard product={product} isLoggedIn={isLoggedIn} />
+            <ProductCard product={product} />
           </div>
         );
       })}

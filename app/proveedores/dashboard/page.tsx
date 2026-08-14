@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
-import { getMyProviderProfile, getDashboardStats, getMyProducts } from "@/lib/actions/provider.actions";
+import {
+  getMyProviderProfile,
+  getDashboardStats,
+  getMyProducts,
+  getMyPendingPurchaseRequests,
+} from "@/lib/actions/provider.actions";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatSoles } from "@/lib/utils/currency";
@@ -12,9 +17,10 @@ export default async function ProviderDashboardPage() {
   const provider = await getMyProviderProfile(session.userId);
   if (!provider) return null;
 
-  const [stats, products] = await Promise.all([
+  const [stats, products, pendingRequests] = await Promise.all([
     getDashboardStats(provider.id),
     getMyProducts(provider.id),
+    getMyPendingPurchaseRequests(provider.id),
   ]);
 
   return (
@@ -22,7 +28,7 @@ export default async function ProviderDashboardPage() {
       <div className="animate-build flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Resumen</h1>
-          <p className="text-sm text-muted-foreground">Hola, {provider.businessName} 👋</p>
+          <p className="text-sm text-muted-foreground">Hola, {provider.businessName}</p>
         </div>
         <Link href="/proveedores/dashboard/productos/nuevo">
           <Button>+ Nuevo producto</Button>
@@ -33,8 +39,39 @@ export default async function ProviderDashboardPage() {
         <StatCard label="Ganancias totales" value={formatSoles(stats.totalEarnings)} />
         <StatCard label="Ganancias este mes" value={formatSoles(stats.earningsThisMonth)} />
         <StatCard label="Ventas totales" value={String(stats.totalSales)} />
-        <StatCard label="Productos activos" value={String(stats.activeProducts)} />
+        <StatCard
+          label="Solicitudes pendientes"
+          value={String(pendingRequests.length)}
+          tone={pendingRequests.length > 0 ? "warning" : undefined}
+        />
       </div>
+
+      {pendingRequests.length > 0 && (
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">Esperando tu aprobación</h2>
+            <Link href="/proveedores/dashboard/solicitudes" className="text-xs font-medium text-accent hover:underline">
+              Ver todas
+            </Link>
+          </div>
+          <div className="flex flex-col divide-y divide-border">
+            {pendingRequests.slice(0, 5).map((r) => (
+              <div key={r.id} className="flex items-center justify-between py-2.5 text-sm">
+                <div>
+                  <p className="font-medium text-foreground">{r.cliente.name}</p>
+                  <p className="text-xs text-muted-foreground">{r.product.name}</p>
+                </div>
+                <span className="font-semibold text-foreground">{formatSoles(r.amount.toString())}</span>
+              </div>
+            ))}
+          </div>
+          <Link href="/proveedores/dashboard/solicitudes" className="mt-3 block">
+            <Button size="sm" className="w-full">
+              Revisar solicitudes
+            </Button>
+          </Link>
+        </Card>
+      )}
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
@@ -63,11 +100,11 @@ export default async function ProviderDashboardPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
   return (
     <Card className="p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-bold text-foreground">{value}</p>
+      <p className={`mt-1 text-xl font-bold ${tone === "warning" ? "text-warning" : "text-foreground"}`}>{value}</p>
     </Card>
   );
 }

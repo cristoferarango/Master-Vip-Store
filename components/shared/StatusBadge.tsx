@@ -9,6 +9,9 @@ const LABELS: Record<string, { label: string; tone: "success" | "warning" | "dan
   RECHAZADO: { label: "Rechazado", tone: "danger" },
   ACTIVO: { label: "Activo", tone: "success" },
   SUSPENDIDO: { label: "Suspendido", tone: "danger" },
+  DISPONIBLE: { label: "Disponible", tone: "success" },
+  RESERVADA: { label: "Reservada", tone: "warning" },
+  VENDIDA: { label: "Vendida", tone: "neutral" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

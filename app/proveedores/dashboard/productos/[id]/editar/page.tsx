@@ -36,6 +36,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
             conditions: product.conditions,
             price: product.price.toString(),
             durationDays: String(product.durationDays),
+            type: product.type,
           }}
         />
       </Card>

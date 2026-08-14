@@ -6,8 +6,15 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { addStock } from "@/lib/actions/provider.actions";
 
-export function StockCredentialForm({ productId }: { productId: string }) {
+export function StockCredentialForm({
+  productId,
+  productType = "STOCK",
+}: {
+  productId: string;
+  productType?: "STOCK" | "ACTIVACION" | "ACTIVACION2";
+}) {
   const router = useRouter();
+  const isActivacion = productType !== "STOCK";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [extraInfo, setExtraInfo] = useState("");
@@ -19,7 +26,12 @@ export function StockCredentialForm({ productId }: { productId: string }) {
     setError(null);
     setLoading(true);
 
-    const result = await addStock({ productId, username, password, extraInfo: extraInfo || undefined });
+    const result = await addStock({
+      productId,
+      username,
+      password: isActivacion ? undefined : password,
+      extraInfo: extraInfo || undefined,
+    });
 
     if (!result.ok) {
       setError(result.error);
@@ -37,24 +49,27 @@ export function StockCredentialForm({ productId }: { productId: string }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <Input
-        label="Usuario / correo"
+        label={isActivacion ? "Correo" : "Usuario / correo"}
         required
         value={username}
         onChange={(e) => setUsername(e.target.value)}
         className="sm:w-56"
       />
+      {!isActivacion && (
+        <Input
+          label="Contraseña"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="sm:w-44"
+        />
+      )}
       <Input
-        label="Contraseña"
-        required
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="sm:w-44"
-      />
-      <Input
-        label="Notas (opcional)"
+        label={isActivacion ? "PIN" : "Notas (opcional)"}
+        required={isActivacion}
         value={extraInfo}
         onChange={(e) => setExtraInfo(e.target.value)}
-        placeholder="PIN, perfil, etc."
+        placeholder={isActivacion ? "PIN de la cuenta" : "PIN, perfil, etc."}
         className="sm:w-44"
       />
       <Button type="submit" isLoading={loading} className="sm:w-auto">

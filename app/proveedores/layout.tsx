@@ -1,10 +1,36 @@
 import Link from "next/link";
 import { Home } from "lucide-react";
+import { getSession } from "@/lib/auth/session";
+import {
+  getMyProviderPurchaseNotifications,
+  getUnreadProviderPurchaseNotificationCount,
+  markProviderPurchaseNotificationsRead,
+} from "@/lib/actions/notification.actions";
+import { safeQuery } from "@/lib/db/safe";
 import { PanelBackground } from "@/components/shared/PanelBackground";
 import { Logo } from "@/components/shared/Logo";
 import { Badge } from "@/components/ui/Badge";
+import { NotificationsDropdown, type NotificationItem } from "@/components/streaming/NotificationsDropdown";
 
-export default function ProveedoresLayout({ children }: { children: React.ReactNode }) {
+export default async function ProveedoresLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession();
+
+  let notifications: NotificationItem[] = [];
+  let unreadCount = 0;
+
+  if (session) {
+    // El panel de Proveedores solo avisa de solicitudes de compra nuevas —
+    // filtrado por tipo, no las notificaciones que la cuenta recibe como
+    // cliente. Si la base de datos no responde, el header simplemente se
+    // muestra sin notificaciones en vez de tumbar todo el panel.
+    const [{ data: notifs }, { data: unread }] = await Promise.all([
+      safeQuery(() => getMyProviderPurchaseNotifications(session.userId), []),
+      safeQuery(() => getUnreadProviderPurchaseNotificationCount(session.userId), 0),
+    ]);
+    notifications = notifs.map((n) => ({ ...n, href: "/proveedores/dashboard/solicitudes" }));
+    unreadCount = unread;
+  }
+
   return (
     <div className="relative flex min-h-screen flex-col">
       <PanelBackground variant="proveedores" />
@@ -21,9 +47,18 @@ export default function ProveedoresLayout({ children }: { children: React.ReactN
           <Badge tone="primary" className="hidden sm:inline-flex">
             Panel Proveedores
           </Badge>
-          <Link href="/streaming" className="ml-auto text-sm text-muted-foreground hover:text-foreground">
-            Ir a la tienda
-          </Link>
+          <div className="ml-auto flex items-center gap-3">
+            {session && (
+              <NotificationsDropdown
+                notifications={notifications}
+                unreadCount={unreadCount}
+                onMarkRead={markProviderPurchaseNotificationsRead}
+              />
+            )}
+            <Link href="/streaming" className="text-sm text-muted-foreground hover:text-foreground">
+              Ir a la tienda
+            </Link>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>

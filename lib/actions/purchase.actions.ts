@@ -2,113 +2,158 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { getSession } from "@/lib/auth/session";
-import { decryptSecret } from "@/lib/crypto/credentials";
-import { addDays } from "@/lib/utils/dates";
+import { decryptSecret, encryptSecret } from "@/lib/crypto/credentials";
+import { createPurchaseRequestSchema } from "@/lib/validators/purchaseRequest.schema";
+import { sendNotification } from "@/lib/notifications/notify";
+import { formatSoles } from "@/lib/utils/currency";
+import { isWithinSchedule, nowInLima } from "@/lib/utils/schedule";
+import { effectivePrice, isViewerActiveSeller } from "./pricing";
+import { getPlatformSettings } from "./admin.actions";
 import type { ActionResult } from "./types";
-import type { PurchaseErrorCode } from "./purchase.types";
+
+/** Datos para el checkout: precio (ya el que le toca a este visitante), tipo de producto y el Yape propio del proveedor. */
+export async function getCheckoutInfo(productId: string) {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: {
+      name: true,
+      price: true,
+      priceSeller: true,
+      pricePromo: true,
+      type: true,
+      activacion2RequestsPassword: true,
+      provider: {
+        select: {
+          businessName: true,
+          yapeNumber: true,
+          yapeName: true,
+          yapeQrUrl: true,
+          user: { select: { whatsapp: true } },
+        },
+      },
+    },
+  });
+  if (!product) return null;
+
+  const sellerActive = await isViewerActiveSeller();
+
+  return {
+    productName: product.name,
+    price: effectivePrice(product, sellerActive).toString(),
+    productType: product.type,
+    activacion2RequestsPassword: product.activacion2RequestsPassword,
+    providerName: product.provider.businessName,
+    providerWhatsapp: product.provider.user.whatsapp,
+    yapeNumber: product.provider.yapeNumber,
+    yapeName: product.provider.yapeName,
+    yapeQrUrl: product.provider.yapeQrUrl,
+  };
+}
 
 /**
- * Compra directa de una cuenta: valida saldo, toma un AccountStock
- * DISPONIBLE de forma atómica (evita doble venta), descuenta el wallet y
- * crea el Purchase con su propio snapshot cifrado.
+ * Solicita la compra de una cuenta: aparta un AccountStock disponible de
+ * forma atómica (evita doble venta) y crea una PurchaseRequest PENDIENTE
+ * con la captura del pago Yape hecho directo al proveedor. El admin la
+ * revisa desde el Panel VIP — recién al aprobarla se crea el Purchase real
+ * con las credenciales (ver admin.actions.ts::approvePurchaseRequest).
  */
-export async function purchaseProduct(
-  productId: string
-): Promise<ActionResult<{ purchaseId: string }> & { code?: PurchaseErrorCode }> {
+export async function createPurchaseRequest(
+  input: unknown
+): Promise<ActionResult<{ requestId: string }>> {
   const session = await getSession();
-  if (!session) {
-    return { ok: false, error: "Debes iniciar sesión.", code: "NOT_LOGGED_IN" };
-  }
+  if (!session) return { ok: false, error: "Debes iniciar sesión." };
+
+  const parsed = createPurchaseRequestSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
   try {
-    const purchaseId = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { id: productId } });
-      if (!product || !product.isActive) {
-        throw new PurchaseError("Este producto ya no está disponible.", "PRODUCT_NOT_FOUND");
-      }
+    const platform = await getPlatformSettings();
+    const sellerActive = await isViewerActiveSeller();
 
-      const wallet = await tx.wallet.upsert({
-        where: { userId: session.userId },
-        update: {},
-        create: { userId: session.userId, balance: 0 },
+    const { requestId, providerUserId, productName, amount } = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: parsed.data.productId },
+        include: { provider: { select: { opensAt: true, closesAt: true } } },
       });
-
-      if (Number(wallet.balance) < Number(product.price)) {
-        throw new PurchaseError("No tienes saldo suficiente para esta compra.", "INSUFFICIENT_BALANCE");
+      if (!product || !product.isActive) {
+        throw new Error("Este producto ya no está disponible.");
+      }
+      const now = nowInLima();
+      if (!isWithinSchedule(platform.opensAt, platform.closesAt, now) || !isWithinSchedule(product.provider.opensAt, product.provider.closesAt, now)) {
+        throw new Error("Este proveedor está fuera de su horario de atención ahora mismo.");
+      }
+      if ((product.type === "ACTIVACION" || product.type === "ACTIVACION2") && !parsed.data.clientEmail) {
+        throw new Error("Ingresa el correo donde se activará el servicio.");
+      }
+      if (product.type === "ACTIVACION2" && product.activacion2RequestsPassword && !parsed.data.clientPassword) {
+        throw new Error("Este producto requiere que ingreses también la contraseña de tu cuenta.");
       }
 
-      // Toma el stock disponible más antiguo.
       const stock = await tx.accountStock.findFirst({
-        where: { productId, status: "DISPONIBLE" },
+        where: { productId: product.id, status: "DISPONIBLE" },
         orderBy: { createdAt: "asc" },
       });
-      if (!stock) {
-        throw new PurchaseError("Esta cuenta se agotó justo ahora.", "OUT_OF_STOCK");
-      }
+      if (!stock) throw new Error("Esta cuenta se agotó justo ahora.");
 
-      // Update condicional: si otra compra concurrente ya la marcó VENDIDA,
-      // count será 0 y abortamos — evita vender la misma cuenta dos veces.
+      // Update condicional: si otra solicitud concurrente ya la reservó,
+      // count será 0 y abortamos — evita que dos clientes aparten la misma cuenta.
       const claim = await tx.accountStock.updateMany({
         where: { id: stock.id, status: "DISPONIBLE" },
-        data: { status: "VENDIDA" },
+        data: { status: "RESERVADA" },
       });
-      if (claim.count === 0) {
-        throw new PurchaseError("Esta cuenta se agotó justo ahora.", "OUT_OF_STOCK");
-      }
+      if (claim.count === 0) throw new Error("Esta cuenta se agotó justo ahora.");
 
-      await tx.wallet.update({
-        where: { userId: session.userId },
-        data: { balance: { decrement: product.price } },
-      });
-
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "COMPRA",
-          amount: Number(product.price) * -1,
-          referenceId: product.id,
-        },
-      });
-
-      const purchase = await tx.purchase.create({
+      const isActivation = product.type === "ACTIVACION" || product.type === "ACTIVACION2";
+      const request = await tx.purchaseRequest.create({
         data: {
           clienteId: session.userId,
           providerId: product.providerId,
           productId: product.id,
           accountStockId: stock.id,
-          pricePaid: product.price,
-          expirationDate: addDays(new Date(), product.durationDays),
-          credentialUsernameEncrypted: stock.usernameEncrypted,
-          credentialPasswordEncrypted: stock.passwordEncrypted,
-          credentialExtraEncrypted: stock.extraInfoEncrypted,
+          amount: effectivePrice(product, sellerActive),
+          screenshotUrl: parsed.data.screenshotUrl,
+          operationCode: parsed.data.operationCode,
+          clientEmail: isActivation ? parsed.data.clientEmail : undefined,
+          clientPasswordEncrypted:
+            product.type === "ACTIVACION2" && parsed.data.clientPassword
+              ? encryptSecret(parsed.data.clientPassword)
+              : undefined,
         },
       });
 
-      return purchase.id;
+      const provider = await tx.provider.findUnique({
+        where: { id: product.providerId },
+        select: { userId: true },
+      });
+
+      return {
+        requestId: request.id,
+        providerUserId: provider?.userId,
+        productName: product.name,
+        amount: product.price.toString(),
+      };
     });
 
-    return { ok: true, data: { purchaseId } };
-  } catch (err) {
-    if (err instanceof PurchaseError) {
-      return { ok: false, error: err.message, code: err.code };
+    if (providerUserId) {
+      await sendNotification({
+        userId: providerUserId,
+        type: "SOLICITUD_COMPRA_NUEVA",
+        title: "Nueva solicitud de compra",
+        message: `${session.name} quiere comprarte "${productName}" por ${formatSoles(amount)}. Revisa tu Yape y aprueba la solicitud.`,
+      });
     }
-    console.error("Error en purchaseProduct:", err);
-    return { ok: false, error: "No se pudo completar la compra. Intenta de nuevo." };
-  }
-}
 
-class PurchaseError extends Error {
-  code: PurchaseErrorCode;
-  constructor(message: string, code: PurchaseErrorCode) {
-    super(message);
-    this.code = code;
+    return { ok: true, data: { requestId } };
+  } catch (err) {
+    console.error("Error en createPurchaseRequest:", err);
+    return { ok: false, error: err instanceof Error ? err.message : "No se pudo enviar tu solicitud." };
   }
 }
 
 /** Descifra bajo demanda las credenciales de una compra del cliente autenticado. */
 export async function revealPurchaseCredentials(
   purchaseId: string
-): Promise<ActionResult<{ username: string; password: string }>> {
+): Promise<ActionResult<{ username: string; password: string | null }>> {
   const session = await getSession();
   if (!session) return { ok: false, error: "No autenticado." };
 
@@ -121,18 +166,26 @@ export async function revealPurchaseCredentials(
     ok: true,
     data: {
       username: decryptSecret(purchase.credentialUsernameEncrypted),
-      password: decryptSecret(purchase.credentialPasswordEncrypted),
+      password: purchase.credentialPasswordEncrypted ? decryptSecret(purchase.credentialPasswordEncrypted) : null,
     },
   };
 }
 
-/** Lecturas server-only para mis-compras / biblioteca. */
+/**
+ * Lecturas para mis-compras / biblioteca. Cada función exportada de un
+ * archivo "use server" es su propio endpoint invocable directamente, así
+ * que se re-verifica la sesión aquí y se ignora cualquier userId que no sea
+ * el propio — nunca se confía en el parámetro recibido.
+ */
 export async function getMyPurchases(userId: string) {
+  const session = await getSession();
+  if (!session || session.userId !== userId) return [];
+
   return prisma.purchase.findMany({
     where: { clienteId: userId },
     include: {
-      product: { select: { name: true, imageUrl: true, slug: true } },
-      provider: { select: { businessName: true } },
+      product: { select: { name: true, imageUrl: true, slug: true, type: true } },
+      provider: { select: { businessName: true, user: { select: { whatsapp: true } } } },
       review: { select: { id: true } },
     },
     orderBy: { purchaseDate: "desc" },
@@ -140,6 +193,9 @@ export async function getMyPurchases(userId: string) {
 }
 
 export async function getMyActivePurchases(userId: string) {
+  const session = await getSession();
+  if (!session || session.userId !== userId) return [];
+
   return prisma.purchase.findMany({
     where: { clienteId: userId, status: "ACTIVA", expirationDate: { gt: new Date() } },
     include: {
@@ -147,5 +203,20 @@ export async function getMyActivePurchases(userId: string) {
       provider: { select: { businessName: true } },
     },
     orderBy: { expirationDate: "asc" },
+  });
+}
+
+/** Solicitudes pendientes o rechazadas del cliente — se muestran junto a las compras aprobadas en "Mis compras". */
+export async function getMyPurchaseRequests(userId: string) {
+  const session = await getSession();
+  if (!session || session.userId !== userId) return [];
+
+  return prisma.purchaseRequest.findMany({
+    where: { clienteId: userId, status: { in: ["PENDIENTE", "RECHAZADO"] } },
+    include: {
+      product: { select: { name: true, imageUrl: true, slug: true, type: true } },
+      provider: { select: { businessName: true, user: { select: { whatsapp: true } } } },
+    },
+    orderBy: { createdAt: "desc" },
   });
 }

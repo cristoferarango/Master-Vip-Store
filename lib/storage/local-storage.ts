@@ -12,17 +12,24 @@ import crypto from "node:crypto";
 
 const UPLOADS_ROOT = path.join(process.cwd(), "public", "uploads");
 
-export type UploadFolder = "productos" | "avatares" | "depositos";
+export type UploadFolder = "productos" | "avatares" | "yape-qr" | "pagos" | "iconos";
 
 export async function saveUploadedFile(
   file: File,
-  folder: UploadFolder
+  folder: UploadFolder,
+  /**
+   * Extensión a usar en el archivo guardado (ej. ".png"). SIEMPRE debe venir
+   * de una extensión fija asociada al tipo MIME ya validado por el llamador
+   * — nunca del nombre de archivo que manda el cliente (`file.name`), que es
+   * atacante-controlado y podría usarse para guardar un .svg/.html
+   * disfrazado de imagen (XSS al abrirlo directo).
+   */
+  extension: string
 ): Promise<string> {
   const targetDir = path.join(UPLOADS_ROOT, folder);
   await mkdir(targetDir, { recursive: true });
 
-  const ext = path.extname(file.name) || ".bin";
-  const filename = `${crypto.randomUUID()}${ext}`;
+  const filename = `${crypto.randomUUID()}${extension}`;
   const filePath = path.join(targetDir, filename);
 
   const buffer = Buffer.from(await file.arrayBuffer());

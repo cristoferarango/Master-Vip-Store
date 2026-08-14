@@ -1,16 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Copy, Check } from "lucide-react";
+import { Eye, Copy, Check, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { revealPurchaseCredentials } from "@/lib/actions/purchase.actions";
 
-export function RevealCredentials({ purchaseId, productName }: { purchaseId: string; productName: string }) {
+export function RevealCredentials({
+  purchaseId,
+  productName,
+  whatsappLink,
+}: {
+  purchaseId: string;
+  productName: string;
+  /** Si la compra es tipo Activación y el proveedor tiene WhatsApp, se muestra un botón para escribirle. */
+  whatsappLink?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creds, setCreds] = useState<{ username: string; password: string } | null>(null);
+  const [creds, setCreds] = useState<{ username: string; password: string | null } | null>(null);
   const [copied, setCopied] = useState<"username" | "password" | null>(null);
 
   async function handleOpen() {
@@ -44,8 +53,27 @@ export function RevealCredentials({ purchaseId, productName }: { purchaseId: str
         {error && <p className="text-sm text-danger">{error}</p>}
         {creds && (
           <div className="flex flex-col gap-3">
-            <CredentialRow label="Usuario" value={creds.username} copied={copied === "username"} onCopy={() => copy(creds.username, "username")} />
-            <CredentialRow label="Contraseña" value={creds.password} copied={copied === "password"} onCopy={() => copy(creds.password, "password")} />
+            <CredentialRow label="Usuario / correo" value={creds.username} copied={copied === "username"} onCopy={() => copy(creds.username, "username")} />
+            {creds.password ? (
+              <CredentialRow label="Contraseña" value={creds.password} copied={copied === "password"} onCopy={() => copy(creds.password!, "password")} />
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-warning">
+                  Esta cuenta se activa por WhatsApp: escríbele al proveedor con tu código de solicitud para que te
+                  pase la contraseña cuando vayas a activarla.
+                </p>
+                {whatsappLink && (
+                  <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="press-feedback inline-flex items-center justify-center gap-1.5 self-start rounded-xl bg-gradient-to-r from-primary to-primary-strong px-3 py-2 text-xs font-semibold text-primary-foreground hover:brightness-110"
+                  >
+                    <MessageCircle size={14} /> Escribir por WhatsApp
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Modal>

@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Users, Store, Receipt, UserCircle, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Store, Receipt, UserCircle, LogOut, ReceiptText, Tags, LayoutTemplate } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/vip/dashboard", label: "Resumen", icon: LayoutDashboard, exact: true },
-  { href: "/vip/dashboard/usuarios", label: "Usuarios", icon: Users },
-  { href: "/vip/dashboard/proveedores", label: "Proveedores", icon: Store },
-  { href: "/vip/dashboard/ventas", label: "Ventas", icon: Receipt },
-  { href: "/vip/dashboard/perfil", label: "Perfil", icon: UserCircle },
+  { href: "/owner/dashboard", label: "Resumen", icon: LayoutDashboard, exact: true },
+  { href: "/owner/dashboard/solicitudes", label: "Solicitudes", icon: ReceiptText },
+  { href: "/owner/dashboard/usuarios", label: "Usuarios", icon: Users },
+  { href: "/owner/dashboard/proveedores", label: "Proveedores", icon: Store },
+  { href: "/owner/dashboard/categorias", label: "Categorías", icon: Tags },
+  { href: "/owner/dashboard/contenido", label: "Contenido", icon: LayoutTemplate },
+  { href: "/owner/dashboard/ventas", label: "Ventas", icon: Receipt },
+  { href: "/owner/dashboard/perfil", label: "Perfil", icon: UserCircle },
 ];
 
 export function AdminSidebar() {
@@ -19,7 +22,7 @@ export function AdminSidebar() {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/vip");
+    router.push("/owner");
     router.refresh();
   }
 

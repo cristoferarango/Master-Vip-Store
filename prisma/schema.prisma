@@ -27,8 +27,11 @@ enum ProviderStatus {
   SUSPENDIDO
 }
 
+// RESERVADA = un cliente ya la apartó y está esperando que el admin
+// verifique su captura de pago; vuelve a DISPONIBLE si se rechaza.
 enum StockStatus {
   DISPONIBLE
+  RESERVADA
   VENDIDA
 }
 
@@ -38,25 +41,45 @@ enum PurchaseStatus {
   REEMBOLSADA
 }
 
-enum DepositStatus {
+// STOCK = se entrega usuario+contraseña de una vez (cuenta lista).
+// ACTIVACION (="Activación 1") = el proveedor solo entrega correo+PIN; la
+// contraseña se la da después por WhatsApp al cliente, cuando este intenta
+// activar la plataforma en su propia cuenta/correo.
+// ACTIVACION2 (="Activación 2") = el cliente da el correo (y opcionalmente
+// contraseña) de SU PROPIA cuenta en esa plataforma, y el proveedor activa
+// el servicio ahí directamente — ver Product.activacion2RequestsPassword.
+enum ProductType {
+  STOCK
+  ACTIVACION
+  ACTIVACION2
+}
+
+// Cada compra es un pago directo al Yape del proveedor — no hay saldo
+// genérico guardado, cada solicitud es para una cuenta específica.
+enum PurchaseRequestStatus {
   PENDIENTE
   APROBADO
   RECHAZADO
 }
 
-enum WalletTxType {
-  RECARGA
-  COMPRA
-  AJUSTE
-}
-
 enum NotificationType {
-  DEPOSITO_APROBADO
-  DEPOSITO_RECHAZADO
+  COMPRA_APROBADA
+  COMPRA_RECHAZADA
   CUENTA_POR_VENCER
   CUENTA_VENCIDA
   BIENVENIDA
   PROVEEDOR_ACTIVADO
+  SOLICITUD_COMPRA_NUEVA
+  CUENTA_ACTIVADA
+  CUENTA_NO_ACTIVADA
+}
+
+// Solo aplica a compras de productos type=ACTIVACION2: el proveedor marca si
+// ya activó el servicio en la cuenta que el cliente entregó.
+enum ActivationStatus {
+  PENDIENTE
+  ACTIVADA
+  NO_ACTIVADA
 }
 
 enum NotificationChannel {
@@ -74,19 +97,30 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
+  // Único — es lo que se usa para iniciar sesión (login por usuario, no por
+  // correo) y lo que se pide al registrarse.
+  username     String   @unique
   whatsapp     String
   role         Role     @default(CLIENTE) // informativo (con qué rol se registró primero) — el acceso real se decide por capacidad: isAdmin, providerProfile != null, o simplemente estar logueado para Streaming.
   isAdmin      Boolean  @default(false)
   avatarUrl    String?
+
+  // Sistema de referidos: cada cuenta tiene su propio código. Si al
+  // registrarse alguien puso el código de otro, queda como seller
+  // PENDIENTE hasta que el dueño (u otro seller) lo active.
+  referralCode    String? @unique
+  referredByCode  String?
+  isSeller        Boolean @default(false)
+  sellerStatus    ProviderStatus? // reutiliza PENDIENTE/ACTIVO/SUSPENDIDO
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  wallet          Wallet?
-  providerProfile Provider?
-  purchases       Purchase[]
-  depositRequests DepositRequest[]
-  reviews         Review[]
-  notifications   Notification[]
+  providerProfile  Provider?
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
+  notifications    Notification[]
 
   @@index([role])
 }
@@ -102,22 +136,35 @@ model Provider {
   ratingAvg    Decimal        @default(0)
   ratingCount  Int            @default(0)
   activatedAt  DateTime?
+
+  // Datos de pago propios — cada proveedor cobra directo a su Yape.
+  yapeQrUrl    String?
+  yapeNumber   String?
+  yapeName     String?
+
+  // Horario en el que este proveedor atiende (formato "HH:mm"). Si alguno
+  // de los dos queda null, se interpreta como disponible todo el día.
+  opensAt  String?
+  closesAt String?
+
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  products  Product[]
-  purchases Purchase[]
-  reviews   Review[]
+  products         Product[]
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
 
   @@index([status])
 }
 
 model Category {
-  id      String @id @default(cuid())
-  name    String @unique
-  slug    String @unique
+  id      String  @id @default(cuid())
+  name    String  @unique
+  slug    String  @unique
+  // Ícono como imagen (SVG/PNG 1000x1000) mostrado en la cinta superior y en Biblioteca.
   iconUrl String?
-  order   Int    @default(0)
+  order   Int     @default(0)
 
   products Product[]
 }
@@ -133,15 +180,24 @@ model Product {
   imageUrl     String
   description  String
   conditions   String
+  // Normal = obligatorio, lo ve el público en general.
   price        Decimal
+  // Seller = precio especial, solo lo ven cuentas con isSeller=true y sellerStatus=ACTIVO.
+  priceSeller  Decimal?
+  // Promoción = precio rebajado temporal, visible para todo público (reemplaza a "price" si está puesto).
+  pricePromo   Decimal?
   durationDays Int
+  type         ProductType @default(STOCK)
+  // Solo aplica a type=ACTIVACION2: si además del correo se le pide la contraseña de su cuenta.
+  activacion2RequestsPassword Boolean @default(false)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  stockItems AccountStock[]
-  purchases  Purchase[]
-  reviews    Review[]
+  stockItems       AccountStock[]
+  purchases        Purchase[]
+  purchaseRequests PurchaseRequest[]
+  reviews          Review[]
 
   @@index([categoryId])
   @@index([providerId])
@@ -153,9 +209,11 @@ model AccountStock {
   productId          String
   product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
   usernameEncrypted  String
-  passwordEncrypted  String
+  // Nula en productos tipo ACTIVACION — la contraseña se coordina por WhatsApp.
+  passwordEncrypted  String?
   extraInfoEncrypted String?
   status             StockStatus  @default(DISPONIBLE)
+  purchaseRequest    PurchaseRequest?
   purchase           Purchase?
   createdAt          DateTime     @default(now())
 
@@ -172,64 +230,67 @@ model Purchase {
   product         Product  @relation(fields: [productId], references: [id])
   accountStockId  String   @unique
   accountStock    AccountStock @relation(fields: [accountStockId], references: [id])
+  requestId       String?  @unique
+  request         PurchaseRequest? @relation(fields: [requestId], references: [id])
 
   pricePaid       Decimal
   purchaseDate    DateTime       @default(now())
   expirationDate  DateTime
   status          PurchaseStatus @default(ACTIVA)
 
-  // Snapshot cifrado propio, inmutable aunque el proveedor edite el AccountStock original
+  // Solo para productos tipo ACTIVACION/ACTIVACION2: el correo del cliente donde se activa el servicio.
+  clientEmail String?
+  // Solo ACTIVACION2 con activacion2RequestsPassword=true: contraseña de SU cuenta, cifrada.
+  clientPasswordEncrypted String?
+  // Solo ACTIVACION2: el proveedor marca aquí si ya activó el servicio o no.
+  activationStatus ActivationStatus?
+
+  // Snapshot cifrado propio, inmutable aunque el proveedor edite el AccountStock original.
+  // La contraseña queda nula en compras ACTIVACION — se coordina por WhatsApp.
   credentialUsernameEncrypted String
-  credentialPasswordEncrypted String
+  credentialPasswordEncrypted String?
   credentialExtraEncrypted    String?
 
-  review    Review?
-  createdAt DateTime @default(now())
+  review        Review?
+  createdAt     DateTime @default(now())
 
   @@index([clienteId])
   @@index([providerId])
 }
 
 // ---------------------------------------------------------------------------
-// Wallet / pagos
+// Pagos: solicitud de compra con captura de Yape (sin saldo/billetera)
 // ---------------------------------------------------------------------------
 
-model Wallet {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance   Decimal  @default(0)
-  updatedAt DateTime @updatedAt
+model PurchaseRequest {
+  id             String   @id @default(cuid())
+  clienteId      String
+  cliente        User     @relation(fields: [clienteId], references: [id])
+  providerId     String
+  provider       Provider @relation(fields: [providerId], references: [id])
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id])
+  accountStockId String   @unique
+  accountStock   AccountStock @relation(fields: [accountStockId], references: [id])
 
-  transactions WalletTransaction[]
-}
-
-model WalletTransaction {
-  id          String       @id @default(cuid())
-  walletId    String
-  wallet      Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  type        WalletTxType
-  amount      Decimal      // positivo = ingreso, negativo = egreso
-  referenceId String?
-  createdAt   DateTime     @default(now())
-
-  @@index([walletId])
-}
-
-model DepositRequest {
-  id                String        @id @default(cuid())
-  clienteId         String
-  cliente           User          @relation(fields: [clienteId], references: [id])
   amount            Decimal
+  screenshotUrl     String
   operationCode     String?
-  screenshotUrl     String?
-  status            DepositStatus @default(PENDIENTE)
+  // Solo para productos tipo ACTIVACION/ACTIVACION2: el correo del cliente donde se activa el servicio.
+  clientEmail       String?
+  // Solo ACTIVACION2 con activacion2RequestsPassword=true: contraseña de SU cuenta, cifrada.
+  clientPasswordEncrypted String?
+  status            PurchaseRequestStatus @default(PENDIENTE)
   reviewedByAdminId String?
   reviewedAt        DateTime?
   rejectionReason   String?
-  createdAt         DateTime      @default(now())
+  createdAt         DateTime @default(now())
+
+  purchase Purchase?
 
   @@index([status])
+  @@index([clienteId])
+  @@index([providerId])
 }
 
 // ---------------------------------------------------------------------------
@@ -267,4 +328,20 @@ model Notification {
   createdAt DateTime            @default(now())
 
   @@index([userId, isRead])
+}
+
+// Fila única (id fijo "singleton") con el horario general de la plataforma
+// — lo configura el dueño desde el Panel VIP. Igual que en Provider, si
+// algún campo queda null se interpreta como disponible todo el día.
+model PlatformSettings {
+  id       String  @id @default("singleton")
+  opensAt  String?
+  closesAt String?
+
+  // Contenido editable del sitio, editado desde el Panel VIP:
+  // - hubCardsJson: array JSON de las 3 tarjetas del inicio [{title,description,buttonLabel,iconUrl}]
+  // - streamingTitle/streamingDescription: encabezado de /streaming
+  hubCardsJson         String?
+  streamingTitle       String?
+  streamingDescription String?
 }

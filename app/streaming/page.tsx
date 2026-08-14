@@ -1,15 +1,11 @@
 import { getActiveProducts } from "@/lib/actions/catalog.actions";
-import { getSession } from "@/lib/auth/session";
 import { safeQuery } from "@/lib/db/safe";
 import { ProductGrid } from "@/components/streaming/ProductGrid";
 import { DatabaseOfflineNotice } from "@/components/shared/DatabaseOfflineNotice";
 import type { ProductCardData } from "@/components/streaming/ProductCard";
 
 export default async function StreamingHomePage() {
-  const [{ data: products, dbError }, session] = await Promise.all([
-    safeQuery(() => getActiveProducts(), []),
-    getSession(),
-  ]);
+  const { data: products, dbError } = await safeQuery(() => getActiveProducts(), []);
 
   const items: ProductCardData[] = products.map((p) => ({
     id: p.id,
@@ -18,6 +14,7 @@ export default async function StreamingHomePage() {
     imageUrl: p.imageUrl,
     price: p.price.toString(),
     stockAvailable: p._count.stockItems,
+    isOpenNow: p.isOpenNow,
     provider: {
       businessName: p.provider.businessName,
       ratingAvg: p.provider.ratingAvg.toString(),
@@ -42,7 +39,7 @@ export default async function StreamingHomePage() {
           <h2 className="text-lg font-semibold text-foreground">Catálogo</h2>
           <span className="text-sm text-muted-foreground">{items.length} productos</span>
         </div>
-        {dbError ? <DatabaseOfflineNotice /> : <ProductGrid products={items} isLoggedIn={!!session} />}
+        {dbError ? <DatabaseOfflineNotice /> : <ProductGrid products={items} />}
       </section>
     </div>
   );

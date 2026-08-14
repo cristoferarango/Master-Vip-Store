@@ -39,11 +39,15 @@ export default async function ProductDetailPage({
     Promise.resolve(Number(product.provider.ratingAvg)),
   ]);
   const outOfStock = product._count.stockItems <= 0;
+  const closed = !outOfStock && !product.isOpenNow;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-10">
       <div className="grid gap-8 md:grid-cols-2">
-        <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-border">
+        {/* Proporción fija 1080x1440 (3:4) — el ancho se limita para que la
+            imagen completa entre en pantalla sin scroll, sin recortar el
+            aspecto original. */}
+        <div className="relative aspect-[1080/1440] w-full max-w-[320px] mx-auto overflow-hidden rounded-2xl border border-border md:mx-0">
           <Image src={product.imageUrl} alt={product.name} fill className="object-cover" priority />
         </div>
 
@@ -66,7 +70,12 @@ export default async function ProductDetailPage({
 
           <p className="text-3xl font-bold text-foreground">{formatSoles(product.price.toString())}</p>
 
-          <BuyButton productId={product.id} isLoggedIn={!!session} outOfStock={outOfStock} />
+          <BuyButton productId={product.id} isLoggedIn={!!session} outOfStock={outOfStock} closed={closed} />
+          {closed && (
+            <p className="text-xs text-warning">
+              Este proveedor no está atendiendo en este horario. Vuelve a intentarlo más tarde.
+            </p>
+          )}
 
           <Card>
             <h2 className="mb-2 text-sm font-semibold text-foreground">Descripción</h2>

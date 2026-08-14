@@ -5,7 +5,10 @@ import { getSession } from "@/lib/auth/session";
 import { encryptSecret, decryptSecret } from "@/lib/crypto/credentials";
 import { slugifyUnique } from "@/lib/utils/slug";
 import { productSchema, accountStockSchema, updateStockSchema } from "@/lib/validators/product.schema";
-import { updateProviderProfileSchema } from "@/lib/validators/provider.schema";
+import { updateProviderProfileSchema, updateProviderPaymentSchema } from "@/lib/validators/provider.schema";
+import { scheduleSchema } from "@/lib/validators/schedule.schema";
+import { approvePurchaseRequestCore, rejectPurchaseRequestCore } from "./purchaseRequestCore";
+import { sendNotification } from "@/lib/notifications/notify";
 import type { ActionResult } from "./types";
 
 /** Devuelve el Provider del usuario en sesión, o null si no aplica. No exportada: los archivos "use server" solo pueden exportar funciones async, los helpers internos no cuentan. */
@@ -99,11 +102,15 @@ export async function addStock(input: unknown): Promise<ActionResult<{ id: strin
   });
   if (!product) return { ok: false, error: "Producto no encontrado." };
 
+  if (product.type === "STOCK" && !parsed.data.password) {
+    return { ok: false, error: "Ingresa la contraseña de la cuenta." };
+  }
+
   const stock = await prisma.accountStock.create({
     data: {
       productId: product.id,
       usernameEncrypted: encryptSecret(parsed.data.username),
-      passwordEncrypted: encryptSecret(parsed.data.password),
+      passwordEncrypted: parsed.data.password ? encryptSecret(parsed.data.password) : null,
       extraInfoEncrypted: parsed.data.extraInfo ? encryptSecret(parsed.data.extraInfo) : null,
     },
   });
@@ -120,17 +127,20 @@ export async function updateStock(input: unknown): Promise<ActionResult<{ id: st
 
   const stock = await prisma.accountStock.findUnique({
     where: { id: parsed.data.stockId },
-    include: { product: { select: { providerId: true } } },
+    include: { product: { select: { providerId: true, type: true } } },
   });
   if (!stock || stock.product.providerId !== provider.id) {
     return { ok: false, error: "No encontrado." };
+  }
+  if (stock.product.type === "STOCK" && !parsed.data.password) {
+    return { ok: false, error: "Ingresa la contraseña de la cuenta." };
   }
 
   await prisma.accountStock.update({
     where: { id: parsed.data.stockId },
     data: {
       usernameEncrypted: encryptSecret(parsed.data.username),
-      passwordEncrypted: encryptSecret(parsed.data.password),
+      passwordEncrypted: parsed.data.password ? encryptSecret(parsed.data.password) : null,
       extraInfoEncrypted: parsed.data.extraInfo ? encryptSecret(parsed.data.extraInfo) : null,
     },
   });
@@ -170,10 +180,130 @@ export async function updateProviderProfile(
   return { ok: true, data: { id: provider.id } };
 }
 
+/** Datos de pago del proveedor: su propio QR, número y nombre de Yape — a donde los clientes le pagan directo. */
+export async function updateProviderPaymentInfo(
+  input: unknown
+): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const parsed = updateProviderPaymentSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  await prisma.provider.update({ where: { id: provider.id }, data: parsed.data });
+  return { ok: true, data: { id: provider.id } };
+}
+
+/** Horario en el que este proveedor atiende — vacío en ambos campos = disponible todo el día. */
+export async function updateProviderSchedule(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const parsed = scheduleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  await prisma.provider.update({
+    where: { id: provider.id },
+    data: {
+      opensAt: parsed.data.opensAt || null,
+      closesAt: parsed.data.closesAt || null,
+    },
+  });
+  return { ok: true, data: { id: provider.id } };
+}
+
+/**
+ * El proveedor aprueba su propia venta — es a su Yape que le llegó el pago,
+ * así que es quien de verdad puede confirmarlo (no el admin).
+ */
+export async function approveMyPurchaseRequest(requestId: string): Promise<ActionResult<{ purchaseId: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const request = await prisma.purchaseRequest.findUnique({ where: { id: requestId } });
+  if (!request || request.providerId !== provider.id) {
+    return { ok: false, error: "Solicitud no encontrada." };
+  }
+
+  try {
+    const session = await getSession();
+    const purchaseId = await approvePurchaseRequestCore(requestId, session!.userId);
+    return { ok: true, data: { purchaseId } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Error al aprobar la compra." };
+  }
+}
+
+export async function rejectMyPurchaseRequest(
+  requestId: string,
+  reason?: string
+): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const request = await prisma.purchaseRequest.findUnique({ where: { id: requestId } });
+  if (!request || request.providerId !== provider.id) {
+    return { ok: false, error: "Solicitud no encontrada." };
+  }
+
+  try {
+    const session = await getSession();
+    await rejectPurchaseRequestCore(requestId, session!.userId, reason);
+    return { ok: true, data: { id: requestId } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Error al rechazar la compra." };
+  }
+}
+
+/**
+ * Solo para compras de productos tipo ACTIVACION2: el proveedor avisa al
+ * cliente si ya activó el servicio en la cuenta que este entregó, o si
+ * todavía no — en ese caso le manda su WhatsApp para coordinar.
+ */
+export async function setActivationStatus(
+  purchaseId: string,
+  activated: boolean
+): Promise<ActionResult<{ id: string }>> {
+  const provider = await getSessionProvider();
+  if (!provider) return { ok: false, error: "No autorizado." };
+
+  const purchase = await prisma.purchase.findUnique({
+    where: { id: purchaseId },
+    include: { product: { select: { name: true, type: true } } },
+  });
+  if (!purchase || purchase.providerId !== provider.id) return { ok: false, error: "No encontrada." };
+  if (purchase.product.type !== "ACTIVACION2") return { ok: false, error: "Solo aplica a Activación 2." };
+
+  await prisma.purchase.update({
+    where: { id: purchaseId },
+    data: { activationStatus: activated ? "ACTIVADA" : "NO_ACTIVADA" },
+  });
+
+  if (activated) {
+    await sendNotification({
+      userId: purchase.clienteId,
+      type: "CUENTA_ACTIVADA",
+      title: "Cuenta activada",
+      message: `Tu cuenta de ${purchase.product.name} ya fue activada.`,
+    });
+  } else {
+    const session = await getSession();
+    const me = await prisma.user.findUnique({ where: { id: session!.userId }, select: { whatsapp: true } });
+    await sendNotification({
+      userId: purchase.clienteId,
+      type: "CUENTA_NO_ACTIVADA",
+      title: "Cuenta no activada",
+      message: `Tu cuenta de ${purchase.product.name} todavía no fue activada. Escribe al proveedor por WhatsApp: ${me?.whatsapp ?? "-"}`,
+    });
+  }
+
+  return { ok: true, data: { id: purchaseId } };
+}
+
 /** Descifra bajo demanda una credencial de stock que le pertenece al proveedor en sesión. */
 export async function revealStockCredentials(
   stockId: string
-): Promise<ActionResult<{ username: string; password: string; extraInfo?: string }>> {
+): Promise<ActionResult<{ username: string; password: string | null; extraInfo?: string }>> {
   const provider = await getSessionProvider();
   if (!provider) return { ok: false, error: "No autorizado." };
 
@@ -189,7 +319,7 @@ export async function revealStockCredentials(
     ok: true,
     data: {
       username: decryptSecret(stock.usernameEncrypted),
-      password: decryptSecret(stock.passwordEncrypted),
+      password: stock.passwordEncrypted ? decryptSecret(stock.passwordEncrypted) : null,
       extraInfo: stock.extraInfoEncrypted ? decryptSecret(stock.extraInfoEncrypted) : undefined,
     },
   };
@@ -197,13 +327,25 @@ export async function revealStockCredentials(
 
 // ---------------------------------------------------------------------------
 // Lecturas
+//
+// IMPORTANTE: cada función exportada de un archivo "use server" es su propio
+// endpoint HTTP invocable directamente (así lo documenta Next.js), sin
+// importar si la página que la usa está protegida por middleware. Por eso
+// cada una vuelve a verificar la sesión y descarta cualquier userId/
+// providerId recibido que no coincida — nunca se confía en el parámetro.
 // ---------------------------------------------------------------------------
 
 export async function getMyProviderProfile(userId: string) {
+  const session = await getSession();
+  if (!session || session.userId !== userId) return null;
+
   return prisma.provider.findUnique({ where: { userId } });
 }
 
 export async function getMyProducts(providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) return [];
+
   return prisma.product.findMany({
     where: { providerId },
     include: {
@@ -215,10 +357,16 @@ export async function getMyProducts(providerId: string) {
 }
 
 export async function getProductForEdit(productId: string, providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) return null;
+
   return prisma.product.findFirst({ where: { id: productId, providerId } });
 }
 
 export async function getProductStock(productId: string, providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) return null;
+
   const product = await prisma.product.findFirst({ where: { id: productId, providerId } });
   if (!product) return null;
   const rows = await prisma.accountStock.findMany({
@@ -233,19 +381,37 @@ export async function getProductStock(productId: string, providerId: string) {
     status: s.status,
     createdAt: s.createdAt,
     username: decryptSecret(s.usernameEncrypted),
-    password: decryptSecret(s.passwordEncrypted),
+    password: s.passwordEncrypted ? decryptSecret(s.passwordEncrypted) : null,
     extraInfo: s.extraInfoEncrypted ? decryptSecret(s.extraInfoEncrypted) : null,
   }));
 
   return { product, stock };
 }
 
+/** Solicitudes de compra pendientes de revisión para las cuentas de este proveedor. */
+export async function getMyPendingPurchaseRequests(providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) return [];
+
+  return prisma.purchaseRequest.findMany({
+    where: { providerId, status: "PENDIENTE" },
+    include: {
+      cliente: { select: { name: true, whatsapp: true } },
+      product: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 export async function getMySales(providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) return [];
+
   const purchases = await prisma.purchase.findMany({
     where: { providerId },
     include: {
       cliente: { select: { name: true, whatsapp: true } },
-      product: { select: { name: true } },
+      product: { select: { name: true, type: true } },
     },
     orderBy: { purchaseDate: "desc" },
   });
@@ -255,12 +421,17 @@ export async function getMySales(providerId: string) {
   return purchases.map((p) => ({
     ...p,
     credentialUsername: decryptSecret(p.credentialUsernameEncrypted),
-    credentialPassword: decryptSecret(p.credentialPasswordEncrypted),
+    credentialPassword: p.credentialPasswordEncrypted ? decryptSecret(p.credentialPasswordEncrypted) : null,
     credentialExtra: p.credentialExtraEncrypted ? decryptSecret(p.credentialExtraEncrypted) : null,
   }));
 }
 
 export async function getDashboardStats(providerId: string) {
+  const session = await getSession();
+  if (!session || session.providerId !== providerId) {
+    return { totalSales: 0, salesThisMonth: 0, activeProducts: 0, totalEarnings: 0, earningsThisMonth: 0 };
+  }
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 

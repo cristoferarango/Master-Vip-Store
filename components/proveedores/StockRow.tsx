@@ -11,18 +11,19 @@ import { formatDatePE } from "@/lib/utils/dates";
 
 export interface StockRowData {
   id: string;
-  status: "DISPONIBLE" | "VENDIDA";
+  status: "DISPONIBLE" | "RESERVADA" | "VENDIDA";
   createdAt: Date;
   username: string;
-  password: string;
+  password: string | null;
   extraInfo: string | null;
 }
 
-export function StockRow({ stock }: { stock: StockRowData }) {
+export function StockRow({ stock, productType = "STOCK" }: { stock: StockRowData; productType?: "STOCK" | "ACTIVACION" | "ACTIVACION2" }) {
   const router = useRouter();
+  const isActivacion = productType !== "STOCK";
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(stock.username);
-  const [password, setPassword] = useState(stock.password);
+  const [password, setPassword] = useState(stock.password ?? "");
   const [extraInfo, setExtraInfo] = useState(stock.extraInfo ?? "");
   const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,12 @@ export function StockRow({ stock }: { stock: StockRowData }) {
   async function handleSave() {
     setLoading("save");
     setError(null);
-    const result = await updateStock({ stockId: stock.id, username, password, extraInfo: extraInfo || undefined });
+    const result = await updateStock({
+      stockId: stock.id,
+      username,
+      password: isActivacion ? undefined : password,
+      extraInfo: extraInfo || undefined,
+    });
     if (!result.ok) {
       setError(result.error);
       setLoading(null);
@@ -65,9 +71,11 @@ export function StockRow({ stock }: { stock: StockRowData }) {
     return (
       <div className="flex flex-col gap-2.5 py-3">
         <div className="grid gap-2 sm:grid-cols-3">
-          <Input label="Usuario/correo" value={username} onChange={(e) => setUsername(e.target.value)} />
-          <Input label="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <Input label="PIN / notas" value={extraInfo} onChange={(e) => setExtraInfo(e.target.value)} />
+          <Input label={isActivacion ? "Correo" : "Usuario/correo"} value={username} onChange={(e) => setUsername(e.target.value)} />
+          {!isActivacion && (
+            <Input label="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
+          )}
+          <Input label={isActivacion ? "PIN" : "PIN / notas"} value={extraInfo} onChange={(e) => setExtraInfo(e.target.value)} />
         </div>
         {error && <p className="text-xs text-danger">{error}</p>}
         <div className="flex gap-2">
@@ -89,23 +97,25 @@ export function StockRow({ stock }: { stock: StockRowData }) {
           <StatusBadge status={stock.status} />
           <span className="text-xs text-muted-foreground">Agregada {formatDatePE(stock.createdAt)}</span>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-            Editar
-          </Button>
-          {stock.status === "DISPONIBLE" && (
+        {stock.status === "DISPONIBLE" && (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              Editar
+            </Button>
             <Button size="sm" variant="danger" onClick={handleDelete} isLoading={loading === "delete"}>
               Eliminar
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <CredField label="Usuario" value={stock.username} copied={copied === "user"} onCopy={() => copy(stock.username, "user")} />
-        <CredField label="Contraseña" value={stock.password} copied={copied === "pass"} onCopy={() => copy(stock.password, "pass")} />
+        <CredField label={isActivacion ? "Correo" : "Usuario"} value={stock.username} copied={copied === "user"} onCopy={() => copy(stock.username, "user")} />
+        {stock.password && (
+          <CredField label="Contraseña" value={stock.password} copied={copied === "pass"} onCopy={() => copy(stock.password!, "pass")} />
+        )}
         {stock.extraInfo && (
-          <CredField label="PIN / notas" value={stock.extraInfo} copied={copied === "extra"} onCopy={() => copy(stock.extraInfo!, "extra")} />
+          <CredField label={isActivacion ? "PIN" : "PIN / notas"} value={stock.extraInfo} copied={copied === "extra"} onCopy={() => copy(stock.extraInfo!, "extra")} />
         )}
       </div>
       {error && <p className="text-xs text-danger">{error}</p>}

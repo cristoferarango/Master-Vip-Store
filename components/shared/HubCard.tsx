@@ -1,9 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, type LucideIcon } from "lucide-react";
 
 export interface HubCardProps {
   href: string;
   icon: LucideIcon;
+  /** Ícono subido desde el Panel VIP (SVG/PNG) — si viene, reemplaza al ícono de arriba. */
+  iconUrl?: string;
   title: string;
   description: string;
   buttonLabel: string;
@@ -24,6 +27,7 @@ const STYLE = {
 export function HubCard({
   href,
   icon: Icon,
+  iconUrl,
   title,
   description,
   buttonLabel,
@@ -42,10 +46,10 @@ export function HubCard({
       }
     >
       <span
-        className="animate-float mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border"
+        className="animate-float relative mb-6 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border"
         style={{ background: STYLE.iconBg, color: STYLE.iconFg, borderColor: STYLE.ring, animationDelay: `${shimmerDelay * 0.3}s` }}
       >
-        <Icon size={26} strokeWidth={1.75} />
+        {iconUrl ? <Image src={iconUrl} alt="" fill className="object-contain p-2.5" unoptimized /> : <Icon size={26} strokeWidth={1.75} />}
       </span>
 
       <h2 className="mb-3 text-3xl font-extrabold uppercase tracking-tight text-foreground">{title}</h2>

@@ -19,7 +19,7 @@ export function LoginForm({
   mismatchMessage?: string;
 }) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,7 @@ export function LoginForm({
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
 
@@ -65,12 +65,13 @@ export function LoginForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <Input
-        label="Correo electrónico"
-        type="email"
+        label="Usuario"
+        type="text"
+        autoComplete="username"
         required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="tucorreo@ejemplo.com"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        placeholder="tu_usuario"
       />
       <PasswordInput
         label="Contraseña"
